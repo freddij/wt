@@ -10,6 +10,9 @@
 #include <Wt/WLineEdit>
 #include <Wt/WPushButton>
 #include <Wt/WText>
+#include <Wt/WGroupBox>
+#include <Wt/WVBoxLayout>
+#include <KMainWindow.h>
 
 // c++0x only, for std::bind
 // #include <functional>
@@ -28,6 +31,7 @@ public:
 private:
   WLineEdit *nameEdit_;
   WText *greeting_;
+  KMainWindow * mainWindow;
 
   void greet();
 };
@@ -43,17 +47,26 @@ HelloApplication::HelloApplication(const WEnvironment& env)
 {
   setTitle("Hello world");                               // application title
 
-  root()->addWidget(new WText("Your name, please ? "));  // show some text
-  nameEdit_ = new WLineEdit(root());                     // allow text input
+  WContainerWidget *root_ = new WGroupBox();//root();
+
+  root_->addWidget(new WText("Your name, please ? "));  // show some text
+  nameEdit_ = new WLineEdit(root_);                     // allow text input
   nameEdit_->setFocus();                                 // give focus
 
   WPushButton *button
-    = new WPushButton("Greet me.", root());              // create a button
+    = new WPushButton("Greet me.", root_);              // create a button
   button->setMargin(5, Left);                            // add 5 pixels margin
 
-  root()->addWidget(new WBreak());                       // insert a line break
+  root_->addWidget(new WBreak());                       // insert a line break
 
-  greeting_ = new WText(root());                         // empty text
+  greeting_ = new WText(root_);                         // empty text
+
+  mainWindow = new KMainWindow(this);
+  mainWindow->setTopContainer(new WGroupBox("TOP BOX"));
+  mainWindow->setBottomContainer(new WGroupBox("BOTTOM"));
+  mainWindow->setMenuContainer(new WGroupBox("Menu"));
+  mainWindow->setScreenContainer(root_);
+  mainWindow->render();
 
   /*
    * Connect signals with slots
