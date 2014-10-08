@@ -23,6 +23,10 @@ namespace Wt {
 class WStringStream;
 class WApplication;
 
+/*! \brief Enumeration for a DOM element type.
+ *
+ * For internal use only.
+ */
 enum DomElementType {
   DomElement_A, DomElement_BR, DomElement_BUTTON, DomElement_COL,
   DomElement_DIV, DomElement_FIELDSET, DomElement_FORM,
@@ -339,6 +343,7 @@ private:
     std::vector<std::string> childRemoveChanges_;
     std::vector<WWidget *>   addedChildren_;
     std::vector<WT_USTRING>  addedStyleClasses_, removedStyleClasses_;
+    std::vector<std::string> attributesSet_;
 
     bool specialChildRemove_;
     WAnimation animation_;
@@ -388,19 +393,31 @@ private:
     DropMimeType(const WT_USTRING& hoverStyleClass);
   };
 
+  enum JavaScriptStatementType { 
+    SetMember, 
+    CallMethod,
+    Statement
+  };
+
   struct OtherImpl {
     struct Member {
       std::string name;
       std::string value;
     };
 
+    struct JavaScriptStatement {
+      JavaScriptStatement(JavaScriptStatementType type,
+			  const std::string& data);
+
+      JavaScriptStatementType type;
+      std::string data;
+    };
+
     std::string                         *id_;
 
     std::map<std::string, WT_USTRING>   *attributes_;
-    std::vector<std::string>            *attributesSet_;
     std::vector<Member>                 *jsMembers_;
-    std::vector<std::string>            *jsMembersSet_;
-    std::vector<std::string>            *jsMemberCalls_;
+    std::vector<JavaScriptStatement>    *jsStatements_;
     JSignal<int, int>                   *resized_;
 
     // drag source id, drag mime type
@@ -409,8 +426,6 @@ private:
 
     typedef std::map<std::string, DropMimeType>   MimeTypesMap;
     MimeTypesMap                                 *acceptedDropMimeTypes_;
-
-    WStringStream *delayedDoJavaScript_;
 
     Signal<> childrenChanged_;
 
@@ -445,7 +460,12 @@ private:
   void setImplementLayoutSizeAware(bool aware);
   JSignal<int, int>& resized();
 
+  void addJavaScriptStatement(JavaScriptStatementType type,
+			      const std::string& data);
   int indexOfJavaScriptMember(const std::string& name) const;
+  void declareJavaScriptMember(DomElement& element,
+			       const std::string& name,
+			       const std::string& value);
 
 protected:
   void setRendered(bool rendered);

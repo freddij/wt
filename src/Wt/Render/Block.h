@@ -24,6 +24,24 @@ class Line;
 
 typedef std::vector<Block *> BlockList;
 
+struct PageState {
+  PageState() 
+  {}
+
+  double y;
+  double minX, maxX;
+  BlockList floats;
+  int page;
+};
+
+struct Range {
+  Range(double start, double end) 
+    : start(start), end(end)
+  {}
+
+  double start, end;
+};
+
 class Block
 {
 public:
@@ -31,9 +49,10 @@ public:
   virtual ~Block();
 
   void determineDisplay();
-  bool normalizeWhitespace(bool haveWhitespace, rapidxml::memory_pool<>& pool);
+  bool normalizeWhitespace(bool haveWhitespace,
+			   rapidxml::xml_document<> &doc);
 
-  bool isFloat() const { return float_ != None; }
+  bool isFloat() const { return float_ != 0; }
   bool isInline() const { return inline_; }
   DomElementType type() const { return type_; }
   bool isText() const;
@@ -43,35 +62,48 @@ public:
   AlignmentFlag verticalAlignment() const;
   Side floatSide() const { return float_; }
 
-  void layoutBlock(double& y, int& page, BlockList& floats,
-		   double minX, double& maxX, bool canIncreaseWidth,
-		   const WTextRenderer& renderer,
-		   double collapseMarginTop,
-		   double& collapseMarginBottom,
-		   double cellHeight = -1);
+  double layoutBlock(PageState &ps,
+		     bool canIncreaseWidth,
+		     const WTextRenderer& renderer,
+		     double collapseMarginTop,
+		     double collapseMarginBottom,
+		     double cellHeight = -1);
 
   void render(WTextRenderer& renderer, int page);
 
-  static void clearFloats(BlockList& floats, int page);
-  static void clearFloats(double& y, int& page, BlockList& floats,
-			  double minX, double maxX, double minWidth);
+  static void clearFloats(PageState &ps);
+  static void clearFloats(PageState &ps,
+			  double minWidth);
 
   std::vector<InlineBox> inlineLayout; // for inline elements, one per line
   std::vector<BlockBox>  blockLayout;  // otherwise, one per page
 
   static void adjustAvailableWidth(double y, int page,
-				   double& minX, double& maxX,
-				   const BlockList& floats);
+				   const BlockList& floats,
+				   Range &rangeX);
 
   static bool isWhitespace(char c);
+
+private:
+  struct CssLength {
+    double length;
+    bool defined;
+  };
+
+  enum PercentageRule {
+    PercentageOfFontSize,
+    PercentageOfParentSize,
+    IgnorePercentage
+  };
 
 private:
   rapidxml::xml_node<> *node_;
   Block *parent_;
   DomElementType type_;
-  bool inline_;
   Side float_;
+  bool inline_;
   BlockList children_;
+  double currentWidth_;
   double contentsHeight_;
   mutable std::map<std::string, std::string> css_;
 
@@ -82,8 +114,7 @@ private:
   std::string inheritedCssProperty(Property property) const;
   double cssWidth(double fontScale) const;
   double cssHeight(double fontScale) const;
-  double cssLength(Property top, Side side, double fontScale, bool& defined)
-    const;
+  CssLength cssLength(Property top, Side side, double fontScale) const;
   double cssMargin(Side side, double fontScale) const;
   double cssPadding(Side side, double fontScale) const;
   double cssBorderWidth(Side side, double fontScale) const;
@@ -99,38 +130,53 @@ private:
   std::string cssTextDecoration() const;
   double cssDecodeLength(const std::string& length, double fontScale,
 			 double defaultValue,
-			 bool interpretPercentage = true) const;
+			 PercentageRule percentage = PercentageOfFontSize,
+			 double parentSize = 0)
+    const;
+  static bool isPercentageLength(const std::string& length);
+
+  double currentParentWidth() const;
 
   bool isInside(DomElementType type) const;
 
-  void layoutInline(Line& line, BlockList& floats,
-		    double minX, double& maxX, bool canIncreaseWidth,
-		    const WTextRenderer& renderer);
-  void layoutTable(double& y, int& page, BlockList& floats,
-		   double& minX, double& maxX, bool canIncreaseWidth,
-		   const WTextRenderer& renderer);
-  void layoutFloat(double y, int page, BlockList& floats,
-		   double lineX, double lineHeight,
-		   double minX, double& maxX,
+  void pageBreak(PageState& ps);
+  double layoutInline(Line& line, BlockList& floats,
+		      double minX, double maxX, bool canIncreaseWidth,
+		      const WTextRenderer& renderer);
+  void layoutTable(PageState &ps,
 		   bool canIncreaseWidth,
-		   const WTextRenderer& renderer);
-
-  void tableDoLayout(double x, double& y, int& page, int cellSpacing,
-		     const std::vector<double>& widths,
+		   const WTextRenderer& renderer,
+		   double cssSetWidth);
+  double layoutFloat(double y, int page, BlockList& floats,
+		     double lineX, double lineHeight,
+		     double minX, double maxX,
+		     bool canIncreaseWidth,
 		     const WTextRenderer& renderer);
-  void tableRowDoLayout(double x, double& y, int& page,
+  void tableDoLayout(double x, PageState &ps, int cellSpacing,
+		     const std::vector<double>& widths,
+		     bool protectRows, Block *repeatHead,
+		     const WTextRenderer& renderer);
+  void tableRowDoLayout(double x, PageState &ps,
 			int cellSpacing,
 			const std::vector<double>& widths,
 			const WTextRenderer& renderer,
 			double rowHeight);
   void tableComputeColumnWidths(std::vector<double>& minima,
 				std::vector<double>& maxima,
-				const WTextRenderer& renderer);
+				const WTextRenderer& renderer,
+				Block *table);
   int cellComputeColumnWidths(int col, bool maximum,
 			      std::vector<double>& values,
-			      const WTextRenderer& renderer);
+			      const WTextRenderer& renderer,
+			      Block *table);
 
   LayoutBox toBorderBox(const LayoutBox& bb, double fontScale) const;
+  double maxLayoutY(int page) const;
+  double minLayoutY(int page) const;
+  double maxChildrenLayoutY(int page) const;
+  double minChildrenLayoutY(int page) const;
+  double childrenLayoutHeight(int page) const;
+  void reLayout(const BlockBox& from, const BlockBox& to);
 
   void renderText(const std::string& text, WTextRenderer& renderer, int page);
   void renderBorders(const LayoutBox& bb, WTextRenderer& renderer,
@@ -138,19 +184,17 @@ private:
 
   WString generateItem() const;
 
-  double layoutHeight() const;
-
-  static void advance(double& y, int& page, double height,
+  static void advance(PageState &ps, double height,
 		      const WTextRenderer& renderer);
   static double diff(double y, int page, double startY, int startPage,
 		     const WTextRenderer& renderer);
 
-  static void positionFloat(double& x, double& y, int& page,
-			    double lineHeight, double width,
-			    const BlockList& floats,
-			    double minX, double& maxX, bool canIncreaseWidth,
-			    const WTextRenderer& renderer,
-			    Side floatSide);
+  static double positionFloat(double x,
+			      PageState &ps,
+			      double lineHeight, double width,
+			      bool canIncreaseWidth,
+			      const WTextRenderer& renderer,
+			      Side floatSide);
 
   static void unsupportedAttributeValue(const char *attribute,
 					const std::string& value);
@@ -158,6 +202,9 @@ private:
 				  const std::string& value);
 
   static bool isAggregate(const std::string& cssProperty);
+
+  bool isTableCell() const
+    { return type_ == DomElement_TD || type_ == DomElement_TH; }
 
   friend class Line;
 };

@@ -182,6 +182,7 @@ void QueryModel<Result>::invalidateData()
   cachedRowCount_ = cacheStart_ = currentRow_ = -1;
   cache_.clear();
   rowValues_.clear();
+  stableIds_.clear();
 }
 
 template <class Result>
@@ -208,6 +209,17 @@ void QueryModel<Result>::sort(int column, SortOrder order)
 }
 
 template <class Result>
+Result QueryModel<Result>::stableResultRow(int row) const
+{
+  StableResultIdMap::const_iterator i = stableIds_.find(row);
+
+  if (i != stableIds_.end())
+    return resultById(i->second);
+  else
+    return resultRow(row);
+}
+
+template <class Result>
 Result& QueryModel<Result>::resultRow(int row)
 {
   if (row < cacheStart_
@@ -229,6 +241,12 @@ Result& QueryModel<Result>::resultRow(int row)
     collection<Result> results = query_.resultList();
     cache_.clear();
     cache_.insert(cache_.end(), results.begin(), results.end());   
+
+    for (unsigned i = 0; i < cache_.size(); ++i) {
+      long long id = resultId(cache_[i]);
+      if (id != -1)
+	stableIds_[cacheStart_ + i] = id;
+    }
 
     if (row >= cacheStart_ + static_cast<int>(cache_.size()))
       throw Exception("QueryModel: geometry inconsistent with database");
@@ -285,13 +303,13 @@ const std::vector<FieldInfo>& QueryModel<Result>::fields() const
 }
 
 template <class Result>
-const FieldInfo &QueryModel<Result>::fieldInfo(int column)
+const FieldInfo &QueryModel<Result>::fieldInfo(int column) const
 {
   return fields_[columns_[column].fieldIdx_];
 }
 
 template <class Result>
-const std::string &QueryModel<Result>::fieldName(int column)
+const std::string &QueryModel<Result>::fieldName(int column) const
 {
   return columns_[column].field_;
 }
@@ -395,6 +413,9 @@ boost::any QueryModel<Result>::headerData(int section, Orientation orientation,
 					  int role) const
 {
   if (orientation == Horizontal) {
+    if (role == LevelRole)
+      return WAbstractTableModel::headerData(section, orientation, role);
+
     QueryColumn::HeaderData::const_iterator i
       = columns_[section].headerData_.find(role);
 
@@ -404,6 +425,20 @@ boost::any QueryModel<Result>::headerData(int section, Orientation orientation,
       return boost::any();
   } else
     return WAbstractTableModel::headerData(section, orientation, role);
+}
+
+template <class Result>
+long long QueryModel<Result>::resultId(const Result& result) const
+{
+  return query_result_traits<Result>::id(result);
+}
+
+template <class Result>
+Result QueryModel<Result>::resultById(long long id) const
+{
+  Transaction transaction(query_.session());
+
+  return query_result_traits<Result>::findById(query_.session(), id);
 }
 
   }

@@ -208,8 +208,8 @@ void SocketNotifier::createSocketPair()
       return;
     }
   }
-  
-  if (peerPort != connectPort) {
+
+  if (peerPort != connectPort && peerAddr != selfAddr) {
     // A hacker has hijacked our secret port!!
     impl_->reportError("socketpair: Accept from unexpected port");
     Close(listenSocket);
@@ -245,7 +245,12 @@ void SocketNotifier::createSocketPair()
 
 void SocketNotifier::startThread()
 {
+#ifndef BOOST_THREAD_MAKE_RV_REF
   impl_->thread_ = boost::thread(&SocketNotifier::threadEntry, this).move();
+#else
+  // Use macro instead of thread.move()
+  impl_->thread_ = BOOST_THREAD_MAKE_RV_REF(boost::thread(&SocketNotifier::threadEntry, this));
+#endif
 }
 
 void SocketNotifier::interruptThread()
@@ -278,9 +283,6 @@ void SocketNotifier::threadEntry()
     std::set<int> read_in = impl_->readFds_;
     std::set<int> write_in = impl_->writeFds_;
     std::set<int> except_in = impl_->exceptFds_;
-
-    std::cerr << read_in.size() << " " << write_in.size() << " "
-	      << except_in.size() << std::endl;
 
     FD_SET(impl_->socket2_, &read_fds);
     maxFd = (std::max)(maxFd, impl_->socket2_);

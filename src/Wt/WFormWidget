@@ -170,9 +170,18 @@ public:
    */
   EventSignal<>& focussed();
 
+  /*! \brief %Signal emitted when the widget is being validated.
+   *
+   * This signal may be useful to react to a changed validation state.
+   *
+   * \sa validate()
+   */
   Signal<WValidator::Result>& validated() { return validated_; }
 
   virtual void refresh();
+
+  virtual void setToolTip(const WString& text,
+			  TextFormat textFormat = PlainText);
 
 protected:
   WLabel     *label_;
@@ -199,10 +208,12 @@ private:
   static const int BIT_READONLY_CHANGED = 4;
   static const int BIT_TABINDEX_CHANGED = 5;
   static const int BIT_JS_OBJECT        = 6;
+  static const int BIT_VALIDATION_CHANGED = 7;
 
-  std::bitset<7>             flags_;
-  int                        tabIndex_;
+  std::bitset<8> flags_;
+  int tabIndex_;
   Signal<WValidator::Result> validated_;
+  WString validationToolTip_;
 
   void undoSetFocus();
 

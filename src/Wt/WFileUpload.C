@@ -8,6 +8,7 @@
 #include "Wt/WFileUpload"
 #include "Wt/WApplication"
 #include "Wt/WEnvironment"
+#include "Wt/WLogger"
 #include "Wt/WProgressBar"
 #include "Wt/WResource"
 #include "Wt/Http/Request"
@@ -23,6 +24,8 @@
 #endif
 
 namespace Wt {
+
+LOGGER("WFileUpload");
 
 class WFileUploadResource : public WResource {
 public:
@@ -66,16 +69,22 @@ protected:
 	<< WApplication::instance()->javaScriptClass() << ") ";
 
       if (triggerUpdate) {
+	LOG_DEBUG("Resource handleRequest(): signaling uploaded");
+
 	o << "window.parent."
 	  << WApplication::instance()->javaScriptClass()
 	  << "._p_.update(null, '"
 	  << fileUpload_->uploaded().encodeCmd() << "', null, true);";
       } else if (request.tooLarge()) {
+	LOG_DEBUG("Resource handleRequest(): signaling file-too-large");
+
 	o << "window.parent."
 	  << WApplication::instance()->javaScriptClass()
 	  << "._p_.update(null, '"
 	  << fileUpload_->fileTooLargeImpl().encodeCmd() << "', null, true);";
       }
+    } else {
+      LOG_DEBUG("Resource handleRequest(): no signal");
     }
 
     o << "}\n"
@@ -126,6 +135,11 @@ void WFileUpload::create()
     fileUploadTarget_ = new WFileUploadResource(this);
     fileUploadTarget_->setUploadProgress(true);
     fileUploadTarget_->dataReceived().connect(this, &WFileUpload::onData);
+
+    setJavaScriptMember(WT_RESIZE_JS,
+			"function(self,w,h) {"
+			"$(self).find('input').width(w);"
+			"}");
   } else
     fileUploadTarget_ = 0;
 
@@ -282,6 +296,9 @@ void WFileUpload::updateDom(DomElement& element, bool all)
       && containsProgress && !progressBar_->isRendered())
     element.addChild(progressBar_->createSDomElement(WApplication::instance()));
 
+  // upload() + disable() does not work. -- fix after this release,
+  // change order of javaScript_ and properties rendering in DomElement
+
   if (fileUploadTarget_ && flags_.test(BIT_DO_UPLOAD)) {
     element.callMethod("submit()");
     flags_.reset(BIT_DO_UPLOAD);
@@ -296,7 +313,10 @@ void WFileUpload::updateDom(DomElement& element, bool all)
     if (!inputE)
       inputE = DomElement::getForUpdate("in" + id(), DomElement_INPUT);
 
-    inputE->callMethod("disabled=true");
+    if (isDisabled())
+      inputE->callMethod("disabled=true");
+    else
+      inputE->callMethod("disabled=false");
 
     flags_.reset(BIT_ENABLED_CHANGED);
   }
@@ -353,6 +373,15 @@ DomElement *WFileUpload::createDomElement(WApplication *app)
     i->setProperty(PropertyClass, "Wt-resource");
     i->setProperty(PropertySrc, fileUploadTarget_->url());
     i->setName("if" + id());
+    if (app->environment().agentIsIE()) {
+      // http://msdn.microsoft.com/en-us/library/ms536474%28v=vs.85%29.aspx
+      // HTA's (started by mshta.exe) have a different security model than
+      // a normal web app, and therefore a HTA browser does not allow
+      // interaction from iframes to the parent window unless this
+      // attribute is set. If omitted, this causes the 'uploaded()'
+      // signal to be blocked when a Wt app is executed as a HTA.
+      i->setAttribute("APPLICATION", "yes");
+    }
 
     DomElement *form = result;
 
@@ -410,6 +439,8 @@ DomElement *WFileUpload::createDomElement(WApplication *app)
 void WFileUpload::setFormData(const FormData& formData)
 {
   setFiles(formData.files);
+
+  LOG_DEBUG("setFormData() : " << formData.files.size() << " file(s)");
 
   if (!formData.files.empty())
     uploaded().emit();

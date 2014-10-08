@@ -21,7 +21,7 @@ namespace {
 
 namespace Wt {
 
-LOGGER("Auth::FacebookService");
+LOGGER("Auth.FacebookService");
 
   namespace Auth {
 
@@ -82,12 +82,13 @@ private:
 				      email, emailVerified));
       }
     } else {
-      setError(ERROR_MSG("badresponse"));
-      
       if (!err) {
 	LOG_ERROR("user info request returned: " << response.status());
 	LOG_ERROR("with: " << response.body());
-      }
+      } else
+	LOG_ERROR("handleMe(): " << err.message());
+
+      setError(ERROR_MSG("badresponse"));
 
       authenticated().emit(Identity::Invalid);
     }

@@ -121,9 +121,18 @@ WValidator *WDoubleSpinBox::createValidator()
 
 WString WDoubleSpinBox::textFromValue() const
 {
+#ifndef WT_TARGET_JAVA
+  // can't use round_str, because (1) precision is only a hint, and
+  // (2) precision is limited to values < 7
+  std::stringstream ss;
+  ss.precision(precision_);
+  ss << std::fixed << std::showpoint << value_;
+  std::string result = ss.str();
+#else
   char buf[30];
 
   std::string result = Utils::round_str(value_, precision_, buf);
+#endif // WT_TARGET_JAVA
 
   if (!nativeControl())
     result = prefix().toUTF8() + result + suffix().toUTF8();
@@ -145,6 +154,13 @@ bool WDoubleSpinBox::parseNumberValue(const std::string& text)
   } catch (boost::bad_lexical_cast &e) {
     return false;
   }
+}
+
+WValidator::Result WDoubleSpinBox::validateRange() const
+{
+  WDoubleValidator validator;
+  validator.setRange(min_, max_);
+  return validator.validate(WString("{1}").arg(value_));
 }
 
 }

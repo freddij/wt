@@ -31,7 +31,7 @@ PROJECT_NAME           = Wt
 # This could be handy for archiving the generated documentation or 
 # if some version control system is used.
 
-PROJECT_NUMBER         = 3.2.1
+PROJECT_NUMBER         = 3.2.3
 
 # The OUTPUT_DIRECTORY tag is used to specify the (relative or absolute) 
 # base path where the generated documentation will be put. 
@@ -1369,3 +1369,15 @@ DOT_CLEANUP            = YES
 # used. If set to NO the values of all tags below this one will be ignored.
 
 SEARCHENGINE           = YES
+
+#---------------------------------------------------------------------------
+# Configuration for the Qt help file output.
+#---------------------------------------------------------------------------
+
+GENERATE_QHP           = YES
+QHP_NAMESPACE          = "eu.webtoolkit.wt"
+QHP_VIRTUAL_FOLDER     = "doc"
+
+# relative to html output dir for somce reason.
+QCH_FILE               = "../wt.qch"
+QHG_LOCATION           = qhelpgenerator

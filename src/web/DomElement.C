@@ -86,6 +86,7 @@ static std::string cssNames_[] =
     "background-color", "background-image", "background-repeat",
     "background-attachment", "background-position",
     "text-decoration", "white-space", "table-layout", "border-spacing",
+    "page-break-before", "page-break-after",
     "zoom", "visibility", "display",
     "box-sizing"};
 
@@ -112,6 +113,7 @@ static std::string cssCamelNames_[] =
     "backgroundColor", "backgroundImage", "backgroundRepeat",
     "backgroundAttachment", "backgroundPosition",
     "textDecoration", "whiteSpace", "tableLayout", "borderSpacing",
+    "pageBreakBefore", "pageBreakAfter",
     "zoom", "visibility", "display",
     "boxSizing" 
   };
@@ -318,7 +320,8 @@ void DomElement::setEvent(const char *eventName,
     js << "o=this;";
 
     if (anchorClick)
-      js << "if(e.ctrlKey||e.metaKey||(" WT_CLASS ".button(e) > 1))return true;else{";
+      js << "if(e.ctrlKey||e.metaKey||(" WT_CLASS ".button(e) > 1))"
+	"return true;else{";
 
     /*
      * This order, first JavaScript and then event propagation is important
@@ -382,7 +385,7 @@ void DomElement::setEvent(const char *eventName,
 
     if (actions[i].exposed)
       code << WApplication::instance()->javaScriptClass()
-	   << "._p_.update(this,'" << actions[i].updateCmd << "',e,true);";
+	   << "._p_.update(o,'" << actions[i].updateCmd << "',e,true);";
 
     if (!actions[i].jsCondition.empty())
       code << "}";
@@ -457,7 +460,7 @@ void DomElement::callJavaScript(const std::string& jsCode,
 {
   ++numManipulations_;
   if (!evenWhenDeleted)
-    javaScript_ << jsCode;
+    javaScript_ << jsCode << '\n';
   else
     javaScriptEvenWhenDeleted_ += jsCode;
 }
@@ -559,7 +562,13 @@ void DomElement::unwrap()
 void DomElement::callMethod(const std::string& method)
 {
   ++numManipulations_;
-  methodCalls_.push_back(method);
+
+  if (var_.empty())
+    javaScript_ << WT_CLASS << ".$('" << id_ << "').";
+  else
+    javaScript_ << var_ << '.';
+
+  javaScript_ << method << ";\n";
 }
 
 void DomElement::jsStringLiteral(std::ostream& out, const std::string& s,
@@ -708,7 +717,7 @@ void DomElement::asHTML(EscapeOStream& out,
     = eventHandlers_.find(WInteractWidget::CLICK_SIGNAL);
 
   bool needButtonWrap
-    = (!(app->environment().ajax())
+    = (!app->environment().ajax()
        && (clickEvent != eventHandlers_.end())
        && (!clickEvent->second.jsCode.empty())
        && (!app->environment().agentIsSpiderBot()));
@@ -772,6 +781,10 @@ void DomElement::asHTML(EscapeOStream& out,
 	   && app->environment().agent() != WEnvironment::IE6)
 	  || href != "#")
 	needButtonWrap = false;
+    } else if (type_ == DomElement_AREA) {
+      DomElement *self = const_cast<DomElement *>(this);
+      self->setAttribute("href", app->url(app->internalPath())
+			 + "&signal=" + clickEvent->second.signalName);
     }
   }
 
@@ -935,12 +948,15 @@ void DomElement::asHTML(EscapeOStream& out,
     case PropertyIndeterminate:
       if (i->second == "true") {
 	DomElement *self = const_cast<DomElement *>(this);
-	self->methodCalls_.push_back("indeterminate=" + i->second);
+	self->callMethod("indeterminate=" + i->second);
       }
       break;
     case PropertyValue:
-      out << " value=";
-      fastHtmlAttributeValue(out, attributeValues, i->second);
+      if (type_ != DomElement_TEXTAREA) {
+	out << " value=";
+	fastHtmlAttributeValue(out, attributeValues, i->second);
+      } else
+	innerHTML += i->second;
       break;
     case PropertySrc:
       out << " src=";
@@ -1018,9 +1034,6 @@ void DomElement::asHTML(EscapeOStream& out,
 
   javaScript << javaScriptEvenWhenDeleted_ << javaScript_;
 
-  for (unsigned i = 0; i < methodCalls_.size(); ++i)
-    javaScript << "$('#" << id_ << "').get(0)." << methodCalls_[i] << ";\n";
-
   if (timeOut_ != -1)
     timeouts.push_back(TimeoutEvent(timeOut_, id_, timeOutJSRepeat_));
 
@@ -1043,7 +1056,7 @@ std::string DomElement::createVar() const
 void DomElement::declare(EscapeOStream& out) const
 {
   if (var_.empty())
-    out << "var " << createVar() << "=$('#" << id_ << "').get(0);\n";
+    out << "var " << createVar() << "=" WT_CLASS ".$('" << id_ << "');\n";
 }
 
 bool DomElement::canWriteInnerHTML(WApplication *app) const
@@ -1138,12 +1151,16 @@ void DomElement::createElement(EscapeOStream& out, WApplication *app,
   out << "var " << var_ << "=";
 
   if (app->environment().agentIsIE()
-      && app->environment().agent() <= WEnvironment::IE8) {
+      && app->environment().agent() <= WEnvironment::IE8
+      && type_ != DomElement_TEXTAREA) {
     /*
      * IE pre 9 can create the entire opening tag at once.
      * This rocks because it results in fewer JavaScript statements.
      * It also avoids problems with changing certain attributes not
      * working in IE.
+     *
+     * However, we cannot do it for TEXTAREA since there are inconsistencies
+     * with setting its value
      */
     out << "document.createElement('";
     out.pushEscape(EscapeOStream::JsStringLiteralSQuote);
@@ -1233,15 +1250,19 @@ std::string DomElement::asJavaScript(EscapeOStream& out,
   {
     WApplication *app = WApplication::instance();
 
-    for (unsigned i = 0; i < updatedChildren_.size(); ++i) {
-      DomElement *child = updatedChildren_[i];
-      child->asJavaScript(out, Update);
-    }
+    bool childrenUpdated = false;
 
     /*
      * short-cut for frequent short manipulations
      */
     if (mode_ == ModeUpdate && numManipulations_ == 1) {
+      for (unsigned i = 0; i < updatedChildren_.size(); ++i) {
+	DomElement *child = updatedChildren_[i];
+	child->asJavaScript(out, Update);
+      }
+
+      childrenUpdated = true;
+
       if (properties_.find(PropertyStyleDisplay) != properties_.end()) {
 	std::string style = properties_.find(PropertyStyleDisplay)->second;
 	if (style == "none") {
@@ -1320,6 +1341,12 @@ std::string DomElement::asJavaScript(EscapeOStream& out,
       out << "$('#" << childrenToSave_[i] << "').replaceWith(c"
 	  << var_ << (int)i << ");";
 
+    if (!childrenUpdated)
+      for (unsigned i = 0; i < updatedChildren_.size(); ++i) {
+	DomElement *child = updatedChildren_[i];
+	child->asJavaScript(out, Update);
+      }
+
     return var_;
   }
   }
@@ -1373,11 +1400,6 @@ void DomElement::renderInnerHtmlJS(EscapeOStream& out, WApplication *app) const
       DomElement *child = childrenToAdd_[i].child;
       child->addToParent(out, var_, childrenToAdd_[i].pos, app);
     }
-  }
-
-  for (unsigned i = 0; i < methodCalls_.size(); ++i) {
-    declare(out);
-    out << var_ << "." << methodCalls_[i] << ';' << '\n';
   }
 
   if (!javaScript_.empty()) {
@@ -1507,20 +1529,18 @@ void DomElement::setJavaScriptProperties(EscapeOStream& out,
       break;
     default:
       if (i->first >= PropertyStyle && i->first <= PropertyStyleBoxSizing) {
-	/*
-	 * Unsupported properties, like min-height, would otherwise be
-	 * ignored. But other browsers like old firefox do not properly
-	 * interpret the set value in this way
-	 */
-	if (!app->environment().agentIsIE()
-	    || (i->first < PropertyStylePosition)) {
-	  out << var_ << ".style."
-	      << cssCamelNames_[i->first - PropertyStyle]
-	      << "='" << i->second << "';";
-	} else {
+	if (app->environment().agent() == WEnvironment::IE6) {
+	  /*
+	   * Unsupported properties, like min-height, would otherwise be
+	   * ignored, but we want this information client-side. (Still, really ?)
+	   */
 	  out << var_ << ".style['"
 	      << cssNames_[i->first - PropertyStylePosition]
 	      << "']='" << i->second << "';";
+	} else {
+	  out << var_ << ".style."
+	      << cssCamelNames_[i->first - PropertyStyle]
+	      << "='" << i->second << "';";
 	}
       }
     }

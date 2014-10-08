@@ -75,6 +75,10 @@ public:
    */
   void setData(const unsigned char *data, int count);
 
+  /*! \brief Returns the data this resource will serve.
+   */
+  const std::vector<unsigned char>& data() const;
+
   /*! \brief Returns the mime-type.
    */
   const std::string mimeType() const { return mimeType_; }
@@ -83,12 +87,12 @@ public:
    */
   void setMimeType(const std::string& mimeType);
 
+  virtual void handleRequest(const Http::Request& request,
+			     Http::Response& response);
+
 private:
   std::string mimeType_;
   std::vector<unsigned char> data_;
-
-  virtual void handleRequest(const Http::Request& request,
-			     Http::Response& response);
 };
 
 }

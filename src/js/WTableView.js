@@ -25,7 +25,7 @@ WT_DECLARE_WT_MEMBER
     * We need to remember this for when going through a hide()
     * show() cycle.
     */
-   var scrollTop = 0, scrollLeft = 0;
+   var scrollTop = 0, scrollLeft = 0, currentWidth = 0, currentHeight = 0;
 
    contentsContainer.onscroll = function() {
      scrollLeft = headerContainer.scrollLeft
@@ -46,6 +46,15 @@ WT_DECLARE_WT_MEMBER
 	        contentsContainer.clientHeight);
    };
 
+   contentsContainer.wtResize = function(o, w, h) {
+     if ((w - currentWidth) > (scrollX2 - scrollX1)/2 ||
+         (h - currentHeight) > (scrollY2 - scrollY1)/2) {
+       currentWidth = w; currentHeight = h;
+       APP.emit(el, 'scrolled', o.scrollLeft, o.scrollTop,
+		o.clientWidth, o.clientHeight);
+     }
+   };
+
    function getItem(event) {
      var columnId = -1, rowIdx = -1, selected = false,
          drop = false, ele = null;
@@ -64,6 +73,7 @@ WT_DECLARE_WT_MEMBER
 	 ele = t;
 	 t = t.parentNode;
 	 columnId = t.className.split(' ')[0].substring(7) * 1;
+	 rowIdx = $t.index();
 	 break;
        }
        t = t.parentNode;
@@ -112,8 +122,10 @@ WT_DECLARE_WT_MEMBER
        = wt_tv_contents.style.width
        = cwidth;
 
-     if (headerColumn)
+     if (headerColumn) {
        headerColumnsContainer.style.width = cwidth;
+       APP.layouts2.adjust(el.children[0].id, [[1,0]]);
+     }
 
      header.style.width = (newWidth + 1) + 'px';
      column.style.width = (newWidth + 7) + 'px';
@@ -200,7 +212,7 @@ WT_DECLARE_WT_MEMBER
 
    var dropEl = null;
 
-   el.handleDragDrop=function(action, object, event, sourceId, mimeType) {
+   el.handleDragDrop = function(action, object, event, sourceId, mimeType) {
      if (dropEl) {
        dropEl.className = dropEl.classNameOrig;
        dropEl = null;
@@ -227,7 +239,7 @@ WT_DECLARE_WT_MEMBER
    };
 
    /* Handle TAB/SHIFT-TAB for cycling through editors in the right order */
-   el.onkeydown=function(e) {
+   el.onkeydown = function(e) {
      var event = e||window.event;
 
      var leftKey = 37,
@@ -378,13 +390,10 @@ WT_DECLARE_WT_MEMBER
      var scrollheight = contentsContainer.offsetHeight
        - contentsContainer.clientHeight;
 
-     if (headerColumnsContainer.parentNode) {
-       var pns = headerColumnsContainer.parentNode.style;
-       if (pns && (pns.paddingBottom !== scrollheight + 'px')) {
-	 pns.paddingBottom = scrollheight + 'px';
-	 APP.layouts.adjust(el.children[0].id);
-	 APP.layouts.adjust();
-       }
+     var pns = headerColumnsContainer.style;
+     if (pns && (pns.marginBottom !== scrollheight + 'px')) {
+       pns.marginBottom = scrollheight + 'px';
+       APP.layouts2.adjust(el.children[0].id, [[1,0]]);
      }
    };
  });

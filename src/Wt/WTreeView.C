@@ -43,6 +43,25 @@ namespace Wt {
 
 LOGGER("WTreeView");
 
+class ContentsContainer : public WContainerWidget
+{
+public:
+  ContentsContainer(WTreeView *treeView)
+    : treeView_(treeView)
+  { 
+    setLayoutSizeAware(true);
+  }
+
+protected:
+  virtual void layoutSizeChanged(int width, int height)
+  {
+    treeView_->contentsSizeChanged(width, height);
+  }
+
+private:
+  WTreeView *treeView_;
+};
+
 class ToggleButtonConfig
 {
 public:
@@ -313,7 +332,7 @@ WTreeViewNode::WTreeViewNode(WTreeView *view, const WModelIndex& index,
   if (index_ != view_->rootIndex()) {
     elementAt(0, 1)->setStyleClass("c1 rh");
 
-    updateGraphics(isLast, view_->model()->rowCount(index_) == 0);
+    updateGraphics(isLast, !view_->model()->hasChildren(index_));
     insertColumns(0, view_->columnCount());
 
     selfHeight = 1;
@@ -945,10 +964,6 @@ WTreeView::WTreeView(WContainerWidget *parent)
     = new WCssTemplateRule("#" + id() +" .Wt-tv-rowc", this);
   app->styleSheet().addRule(rowContentsWidthRule_);
 
-  app->addAutoJavaScript
-    ("{var obj = $('#" + id() + "').data('obj');"
-     "if (obj) obj.autoJavaScript();}");
-
   if (parent)
     parent->addWidget(this);
 
@@ -990,7 +1005,7 @@ void WTreeView::setup()
     headerContainer_->setStyleClass("Wt-header headerrh cwidth");
     headerContainer_->addWidget(headers_);
 
-    contentsContainer_ = new WContainerWidget();
+    contentsContainer_ = new ContentsContainer(this);
     contentsContainer_->setStyleClass("cwidth");
     contentsContainer_->setOverflow(WContainerWidget::OverflowAuto);
     contentsContainer_->scrolled().connect(this, &WTreeView::onViewportChange);
@@ -1045,12 +1060,17 @@ void WTreeView::defineJavaScript()
 
   LOAD_JAVASCRIPT(app, "js/WTreeView.js", "WTreeView", wtjs1);
 
-  app->doJavaScript("new " WT_CLASS ".WTreeView("
-		    + app->javaScriptClass() + "," + jsRef() + ","
-		    + contentsContainer_->jsRef() + ","
-		    + headerContainer_->jsRef() + ","
-		    + boost::lexical_cast<std::string>(rowHeaderCount())
-		    + ");");
+  setJavaScriptMember(" WTreeView", "new " WT_CLASS ".WTreeView("
+		      + app->javaScriptClass() + "," + jsRef() + ","
+		      + contentsContainer_->jsRef() + ","
+		      + headerContainer_->jsRef() + ","
+		      + boost::lexical_cast<std::string>(rowHeaderCount())
+		      + ");");
+
+  setJavaScriptMember(WT_RESIZE_JS,
+		      "function(self,w,h) {"
+		      "$(self).data('obj').wtResize();"
+		      "}");
 }
 
 void WTreeView::setRowHeaderCount(int count)
@@ -1176,7 +1196,7 @@ void WTreeView::setColumnWidth(int column, const WLength& width)
   WApplication *app = WApplication::instance();
 
   if (app->environment().ajax() && renderState_ < NeedRerenderHeader)
-    app->doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
+    doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
 
   if (!app->environment().ajax() && column == 0 && !width.isAuto()) {
     double total = 0;
@@ -1372,10 +1392,10 @@ void WTreeView::scheduleRerender(RenderState what)
 void WTreeView::render(WFlags<RenderFlag> flags)
 {
   if (flags & RenderFull) {
+    defineJavaScript();
+
     if (!itemEvent_.isConnected())
       itemEvent_.connect(this, &WTreeView::onItemEvent);
-
-    defineJavaScript();
   }
 
   while (renderState_ != RenderOk) {
@@ -1403,10 +1423,9 @@ void WTreeView::render(WFlags<RenderFlag> flags)
 
 
   if (rowHeaderCount() && renderedNodesAdded_) {
-    WApplication::instance()->doJavaScript
-      ("{var s=" + scrollBarC_->jsRef() + ";"
-       """if (s) {" + tieRowsScrollJS_.execJs("s") + "}"
-       "}");
+    doJavaScript("{var s=" + scrollBarC_->jsRef() + ";"
+		 """if (s) {" + tieRowsScrollJS_.execJs("s") + "}"
+		 "}");
     renderedNodesAdded_ = false;
   }
 
@@ -1441,7 +1460,7 @@ void WTreeView::rerenderHeader()
   }
 
   if (app->environment().ajax())
-    app->doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
+    doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
 }
 
 void WTreeView::enableAjax()
@@ -1472,7 +1491,9 @@ void WTreeView::rerenderTree()
 
   if (WApplication::instance()->environment().ajax()) {
     connectObjJS(rootNode_->clicked(), "click");
-    connectObjJS(rootNode_->doubleClicked(), "dblClick");
+
+    if (editTriggers() & DoubleClicked || doubleClicked().isConnected())
+      connectObjJS(rootNode_->doubleClicked(), "dblClick");
     if (mouseWentDown().isConnected() || dragEnabled_)
       connectObjJS(rootNode_->mouseWentDown(), "mouseDown");
     if (mouseWentUp().isConnected())
@@ -1493,8 +1514,13 @@ void WTreeView::onViewportChange(WScrollEvent e)
   viewportTop_ = static_cast<int>
     (std::floor(e.scrollY() / rowHeight().toPixels()));
 
-  viewportHeight_ = static_cast<int>
-    (std::ceil(e.viewportHeight() / rowHeight().toPixels()));
+  contentsSizeChanged(0, e.viewportHeight());
+}
+
+void WTreeView::contentsSizeChanged(int width, int height)
+{
+  viewportHeight_
+    = static_cast<int>(std::ceil(height / rowHeight().toPixels()));
 
   scheduleRerender(NeedAdjustViewPort);
 }
@@ -1586,29 +1612,21 @@ void WTreeView::setCollapsed(const WModelIndex& index)
   bool selectionHasChanged = false;
   WModelIndexSet& selection = selectionModel()->selection_;
 
+  WModelIndexSet toDeselect;
   for (WModelIndexSet::iterator it = selection.lower_bound(index);
-       it != selection.end();) {    
-    /*
-     * The following is needed because internalSelect(Deselect) will remove
-     * the iterated element
-     */
-#ifndef WT_TARGET_JAVA
-    WModelIndexSet::iterator n = it;
-    ++n;
-#endif
-
+       it != selection.end(); ++it) {    
     WModelIndex i = *it;
     if (i == index) {
     } else if (WModelIndex::isAncestor(i, index)) {
-      if (internalSelect(i, Deselect))
-	selectionHasChanged = true;
+      toDeselect.insert(i);
     } else
       break;
-
-#ifndef WT_TARGET_JAVA
-    it = n;
-#endif
   }
+
+  for (WModelIndexSet::iterator it = toDeselect.begin();
+       it != toDeselect.end(); ++it)
+    if (internalSelect(*it, Deselect))
+      selectionHasChanged = true;
 
   if (selectionHasChanged)
     selectionChanged().emit();
@@ -1740,7 +1758,7 @@ void WTreeView::modelColumnsInserted(const WModelIndex& parent,
 	scheduleRerender(NeedRerenderHeader);
       else {
 	if (app->environment().ajax())
-	  app->doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
+	  doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
 
 	WContainerWidget *row = headerRow();
 
@@ -1775,7 +1793,7 @@ void WTreeView::modelColumnsAboutToBeRemoved(const WModelIndex& parent,
     if (renderState_ < NeedRerenderHeader) {
       WApplication *app = wApp;
       if (app->environment().ajax())
-	app->doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
+	doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
     }
 
     columns_.erase(columns_.begin() + start, columns_.begin() + start + count);
@@ -1921,8 +1939,7 @@ void WTreeView::modelRowsInserted(const WModelIndex& parent,
 	      (parentNode->widgetForModelRow(start - 1));
 
 	    if (n)
-	      n->updateGraphics(false,
-				model()->rowCount(n->modelIndex()) == 0);
+	      n->updateGraphics(false, !model()->hasChildren(n->modelIndex()));
 	  }
 	}
       } /* else:
@@ -2007,7 +2024,7 @@ void WTreeView::modelRowsAboutToBeRemoved(const WModelIndex& parent,
 	      (parentNode->widgetForModelRow(start - 1));
 
 	    if (n)
-	      n->updateGraphics(true, model()->rowCount(n->modelIndex()) == 0);
+	      n->updateGraphics(true, !model()->hasChildren(n->modelIndex()));
 	  }
 	} /* else:
 	     children not loaded -- so we do not need to bother
@@ -2544,7 +2561,7 @@ void WTreeView::shiftModelIndexes(const WModelIndex& parent,
   int removed = shiftModelIndexes(parent, start, count, model(),
 				  selectionModel()->selection_);
 
-  shiftEditors(parent, start, count, false);
+  shiftEditorRows(parent, start, count, false);
 
   if (removed)
     selectionChanged().emit();
@@ -2624,7 +2641,7 @@ void WTreeView::selectRange(const WModelIndex& first, const WModelIndex& last)
       = index.column() == 0 ? index
       : model()->index(index.row(), 0, index.parent());
 
-    if (isExpanded(indexc0) && model()->rowCount(indexc0) > 0)
+    if (isExpanded(indexc0) && model()->hasChildren(indexc0))
       index = model()->index(0, first.column(), indexc0);
     else {
       for (;;) {

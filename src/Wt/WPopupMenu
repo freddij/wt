@@ -310,11 +310,12 @@ public:
   void setAutoHide(bool enabled, int autoHideDelay = 0);
 
 protected:
-  virtual bool containsExposed(WWidget *child) const;
+  virtual bool isExposed(WWidget *widget);
 
 private:
   WTemplate      *impl_;
   WPopupMenuItem *parentItem_, *result_;
+  WWidget        *location_;
 
   Signal<> aboutToHide_;
   Signal<WPopupMenuItem *> triggered_;
@@ -334,6 +335,10 @@ private:
   void        renderOutAll();
 
   friend class WPopupMenuItem;
+
+  int count() const;
+  WPopupMenuItem *itemAt(int index) const;
+  void getSubMenus(std::vector<WPopupMenu *>& result);
 };
 
 template<class T, class V>

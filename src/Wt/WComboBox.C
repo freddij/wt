@@ -58,10 +58,34 @@ void WComboBox::setModel(WAbstractItemModel *model)
      (model_->modelReset().connect(this, &WComboBox::itemsChanged));
   modelConnections_.push_back
     (model_->layoutChanged().connect(this, &WComboBox::itemsChanged));
+  modelConnections_.push_back
+    (model_->rowsAboutToBeRemoved().connect(this, 
+					    &WComboBox::rowsAboutToBeRemoved));
 
   /* Redraw contents of the combo box to match the contents of the new model.
    */
   refresh();
+}
+
+void WComboBox::rowsAboutToBeRemoved(const WModelIndex &index, 
+				     int from, int to)
+{
+  if (currentIndex_ == -1)
+    return;
+
+  int count = to - from + 1;
+  if (currentIndex_ > to) { 
+    currentIndex_ -= count; 
+  } else if (currentIndex_ >= from) { 
+    if (from > 0) 
+      currentIndex_ = from - 1; 
+    else {
+      if (model_->rowCount(index) - count == 0)
+	currentIndex_ = -1;
+      else
+	currentIndex_ = 0;
+    }
+  }
 }
 
 void WComboBox::setModelColumn(int index)
@@ -288,6 +312,8 @@ void WComboBox::setValueText(const WT_USTRING& value)
 void WComboBox::itemsChanged()
 {
   itemsChanged_ = true;
+  if (currentIndex_ > count() - 1)
+      currentIndex_ = count() - 1;
   repaint(RepaintInnerHtml);
 }
 

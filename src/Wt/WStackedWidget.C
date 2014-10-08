@@ -7,7 +7,7 @@
 #include "Wt/WEnvironment"
 #include "Wt/WStackedWidget"
 
-#include "StdGridLayoutImpl.h"
+#include "StdWidgetItemImpl.h"
 
 #ifndef WT_DEBUG_JS
 #include "js/WStackedWidget.min.js"
@@ -17,10 +17,11 @@ namespace Wt {
 
 WStackedWidget::WStackedWidget(WContainerWidget *parent)
   : WContainerWidget(parent),
-    currentIndex_(-1)
+    currentIndex_(-1),
+    javaScriptDefined_(false),
+    loadAnimateJS_(false)
 {
   WT_DEBUG( setObjectName("WStackedWidget") );
-  setJavaScriptMember(WT_RESIZE_JS, StdGridLayoutImpl::childrenResizeJS());
 
   addStyleClass("Wt-stack");
 }
@@ -72,15 +73,14 @@ void WStackedWidget::removeChild(WWidget *child)
 void WStackedWidget::setTransitionAnimation(const WAnimation& animation,
 					    bool autoReverse)
 {
-  if (loadAnimateJS()) {
+  if (WApplication::instance()->environment().supportsCss3Animations()) {
     if (!animation.empty())
       addStyleClass("Wt-animated");
 
+    loadAnimateJS();
+
     animation_ = animation;
     autoReverseAnimation_ = autoReverse;
-
-    setJavaScriptMember("wtAnimateChild", WT_CLASS ".WStackedWidget.animateChild");
-    setJavaScriptMember("wtAutoReverse", autoReverseAnimation_ ? "true" : "false");
   }
 }
 
@@ -92,10 +92,13 @@ void WStackedWidget::setCurrentIndex(int index)
 void WStackedWidget::setCurrentIndex(int index, const WAnimation& animation,
 				     bool autoReverse)
 {
-  if (loadAnimateJS() && !animation.empty()
-      && (isRendered() || !canOptimizeUpdates())) {
+  if (!animation.empty() && 
+      WApplication::instance()->environment().supportsCss3Animations() &&
+      ((isRendered() && javaScriptDefined_) || !canOptimizeUpdates())) {
     if (canOptimizeUpdates() && index == currentIndex_)
       return;
+
+    loadAnimateJS();
 
     WWidget *previous = currentWidget();
 
@@ -110,19 +113,59 @@ void WStackedWidget::setCurrentIndex(int index, const WAnimation& animation,
     currentIndex_ = index;
 
     for (int i = 0; i < count(); ++i)
-      widget(i)->setHidden(currentIndex_ != i);
+      if (widget(i)->isHidden() != (currentIndex_ != i))
+	widget(i)->setHidden(currentIndex_ != i);
+
+    if (currentIndex_ >= 0 && isRendered() && javaScriptDefined_)
+      doJavaScript("$('#" + id() + "').data('obj').setCurrent("
+		   + widget(currentIndex_)->jsRef() + ");");
   }
 }
 
-bool WStackedWidget::loadAnimateJS()
+void WStackedWidget::loadAnimateJS()
 {
-  WApplication *app = WApplication::instance();
+  if (!loadAnimateJS_) {
+    loadAnimateJS_ = true;
+    if (javaScriptDefined_) {
+      LOAD_JAVASCRIPT(WApplication::instance(), "js/WStackedWidget.js",
+		      "WStackedWidget.prototype.animateChild", wtjs2);
+      setJavaScriptMember("wtAnimateChild",
+			  "$('#" + id() + "').data('obj').animateChild");
+      setJavaScriptMember("wtAutoReverse",
+			  autoReverseAnimation_ ? "true" : "false");
+    }
+  }
+}
 
-  if (app->environment().supportsCss3Animations()) {
+void WStackedWidget::defineJavaScript()
+{
+  if (!javaScriptDefined_) {
+    javaScriptDefined_ = true;
+    WApplication *app = WApplication::instance();
+
     LOAD_JAVASCRIPT(app, "js/WStackedWidget.js", "WStackedWidget", wtjs1);
-    return true;
-  } else
-    return false;
+
+    setJavaScriptMember(" WStackedWidget", "new " WT_CLASS ".WStackedWidget("
+			+ app->javaScriptClass() + "," + jsRef() + ");");
+
+    setJavaScriptMember(WT_RESIZE_JS,
+			"$('#" + id() + "').data('obj').wtResize");
+    setJavaScriptMember(WT_GETPS_JS,
+			"$('#" + id() + "').data('obj').wtGetPs");
+
+    if (loadAnimateJS_) {
+      loadAnimateJS_ = false;
+      loadAnimateJS();
+    }
+  }
+}
+
+void WStackedWidget::render(WFlags<RenderFlag> flags)
+{
+  if (flags & RenderFull)
+    defineJavaScript();
+
+  WContainerWidget::render(flags);
 }
 
 void WStackedWidget::setCurrentWidget(WWidget *widget)

@@ -105,7 +105,7 @@ double WPieChart::explode(int modelRow) const
 void WPieChart::setPerspectiveEnabled(bool enabled, double height)
 {
   if ((!enabled && height_ != 0.0) || height_ != height) {
-    height_ = height;
+    height_ = enabled ? height : 0.0;
     update();
   }
 }
@@ -170,6 +170,7 @@ WWidget* WPieChart::createLegendItemWidget(int index,
     if (!label.empty()) {
       WText* l = new WText(label);
       l->setPadding(5, Left);
+      l->setToolTip(asString(model()->data(index, dataColumn_, ToolTipRole)));
       legendItem->addWidget(l);
     }
   }

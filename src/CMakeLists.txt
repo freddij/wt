@@ -44,9 +44,11 @@ FILE_TO_STRING(xml/wt.xml Wt_xml.C Wt_xml)
 FILE_TO_STRING(xml/auth.xml Auth_xml.C Auth_xml)
 
 SET(libsources
+Wt/PopupWindow.C
 Wt/Resizable.C
 Wt/SizeHandle.C
 Wt/StdGridLayoutImpl.C
+Wt/StdGridLayoutImpl2.C
 Wt/StdLayoutImpl.C
 Wt/StdLayoutItemImpl.C
 Wt/StdWidgetItemImpl.C
@@ -177,6 +179,8 @@ Wt/WSocketNotifier.C
 Wt/WSortFilterProxyModel.C
 Wt/WSpinBox.C
 Wt/WSound.C
+Wt/WSslCertificate.C
+Wt/WSslInfo.C
 Wt/WStackedWidget.C
 Wt/WStandardItem.C
 Wt/WStandardItemModel.C
@@ -257,6 +261,7 @@ Wt/Chart/WStandardPalette.C
 Wt/Json/Object.C
 Wt/Json/Parser.C
 Wt/Json/Value.C
+Wt/Http/HttpUtils.C
 Wt/Http/Client.C
 Wt/Http/Message.C
 Wt/Http/Request.C
@@ -266,9 +271,17 @@ Wt/Http/WtClient.C
 Wt/Mail/Client.C
 Wt/Mail/Mailbox.C
 Wt/Mail/Message.C
+Wt/Payment/Address.C
+Wt/Payment/PayPal.C
+Wt/Payment/Customer.C
+Wt/Payment/Money.C
+Wt/Payment/Order.C
+Wt/Payment/OrderItem.C
+Wt/Payment/Result.C
 Wt/Render/Block.C
 Wt/Render/Line.C
 Wt/Render/LayoutBox.C
+Wt/Render/RenderUtils.C
 Wt/Render/WTextRenderer.C
 web/md5.c
 web/sha1.c
@@ -277,6 +290,8 @@ web/Configuration.C
 web/DomElement.C
 web/EscapeOStream.C
 web/FileServe.C
+web/ColorUtils.C
+web/ImageUtils.C
 web/RefEncoder.C
 web/SoundManager.C
 web/WebController.C
@@ -288,9 +303,12 @@ web/WebSocketMessage.C
 web/WebRenderer.C
 web/WebUtils.C
 web/FileUtils.C
+web/PdfUtils.C
 web/TimeUtil.C
 web/XSSFilter.C
 web/XSSUtils.C
+web/SslUtils.C
+web/UriUtils.C
 web/random_device.cpp
 web/base64.cpp
 Plain_html.C
@@ -340,6 +358,28 @@ TARGET_LINK_LIBRARIES(wt
     ${WT_SOCKET_LIBRARY}
     ${WT_MATH_LIBRARY}
     )
+
+ADD_LIBRARY(wttest
+  Wt/Test/WTestEnvironment.C
+)
+
+TARGET_LINK_LIBRARIES(wttest wt ${BOOST_WT_LIBRARIES})
+INSTALL(TARGETS wttest
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION ${LIB_INSTALL_DIR}
+    ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
+
+IF(MSVC)
+  SET_TARGET_PROPERTIES(wttest PROPERTIES COMPILE_FLAGS "${BUILD_PARALLEL} /wd4251 /wd4275 /wd4355 /wd4800 /wd4996 /wd4101 /wd4267")
+ENDIF(MSVC)
+
+SET_TARGET_PROPERTIES(
+  wttest
+PROPERTIES
+  VERSION ${VERSION_SERIES}.${VERSION_MAJOR}.${VERSION_MINOR}
+  SOVERSION ${WTTEST_SOVERSION}
+  DEBUG_POSTFIX ${DEBUG_LIB_POSTFIX}
+)
 
 IF(HAVE_SSL)
   TARGET_LINK_LIBRARIES(wt ${SSL_LIBRARIES})

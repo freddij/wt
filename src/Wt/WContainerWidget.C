@@ -4,7 +4,14 @@
  * See the LICENSE file for terms of use.
  */
 #include "StdWidgetItemImpl.h"
+
+#ifdef OLD_LAYOUT
 #include "StdGridLayoutImpl.h"
+#define GridLayoutImpl StdGridLayoutImpl
+#else
+#include "StdGridLayoutImpl2.h"
+#define GridLayoutImpl StdGridLayoutImpl2
+#endif
 
 #include "Wt/WApplication"
 #include "Wt/WBorderLayout"
@@ -83,31 +90,26 @@ void WContainerWidget::setLayout(WLayout *layout,
   if (layout_ && layout != layout_)
     delete layout_;
 
+#ifndef OLD_LAYOUT
+  AlignmentFlag hAlign = alignment & AlignHorizontalMask;
+  AlignmentFlag vAlign = alignment & AlignVerticalMask;
+  
+  if (hAlign != AlignJustify || vAlign != 0) {
+    LOG_WARN("setLayout(layout, alignment) is being deprecated (and does no "
+	     "longer have the special meaning it used to have). Use spacers "
+	     "or CSS instead to control alignment");
+  }
+#endif
+
   contentAlignment_ = alignment;
 
   if (layout != layout_) {
     layout_ = layout;
-    flags_.set(BIT_LAYOUT_CHANGED);
+    flags_.set(BIT_LAYOUT_NEEDS_RERENDER);
 
     if (layout) {
       WWidget::setLayout(layout);
       layoutImpl()->setContainer(this);
-
-      /*
-       * Normally, scrollbars are not used automatically for a container,
-       * which applies to when a layout overflows.
-       *
-       * Only for IE 6 we really need to set this otherwise the parent
-       * increases its size automatically and then we cannot reduce in
-       * size (standard behaviour is overflow visible which says the
-       * parent size should not be affected). Luckily, IE does not show the
-       * scrollbars unless really needed
-       */
-      if (WApplication::instance()->environment().agentIsIElt(9)) {
-	AlignmentFlag vAlign = alignment & AlignVerticalMask;
-	if (vAlign == 0)
-	  setOverflow(WContainerWidget::OverflowHidden);
-      }
     }
   }
 #else
@@ -119,18 +121,24 @@ void WContainerWidget::childResized(WWidget *child,
 				    WFlags<Orientation> directions)
 {
 #ifndef WT_NO_LAYOUT
-  AlignmentFlag vAlign = contentAlignment_ & AlignVerticalMask;
-  if (layout_
-      && (directions & Vertical)
-      && (vAlign == 0)) {
-    if (!flags_.test(BIT_LAYOUT_NEEDS_UPDATE)) {
+  if (layout_) {
+#ifdef OLD_LAYOUT
+    AlignmentFlag vAlign = contentAlignment_ & AlignVerticalMask;
+    bool setUpdate
+      = (directions & Vertical) && (vAlign == 0)
+      && !flags_.test(BIT_LAYOUT_NEEDS_UPDATE);
+#else
+    bool setUpdate = true;
+#endif
+    if (setUpdate) {
       WWidgetItem *item = layout_->findWidgetItem(child);
-      if (item)
+      if (item) {
 	if (dynamic_cast<StdLayoutImpl *>(item->parentLayout()->impl())
 	    ->itemResized(item)) {
 	  flags_.set(BIT_LAYOUT_NEEDS_UPDATE);
 	  repaint(RepaintInnerHtml);
 	}
+      }
     }
   } else
 #endif
@@ -149,19 +157,19 @@ WLayoutItemImpl *WContainerWidget::createLayoutItemImpl(WLayoutItem *item)
   {
     WBorderLayout *l = dynamic_cast<WBorderLayout *>(item);
     if (l)
-      return new StdGridLayoutImpl(l, l->grid());
+      return new GridLayoutImpl(l, l->grid());
   }
 
   {
     WBoxLayout *l = dynamic_cast<WBoxLayout *>(item);
     if (l)
-      return new StdGridLayoutImpl(l, l->grid());
+      return new GridLayoutImpl(l, l->grid());
   }
 
   {
     WGridLayout *l = dynamic_cast<WGridLayout *>(item);
     if (l)
-      return new StdGridLayoutImpl(l, l->grid());
+      return new GridLayoutImpl(l, l->grid());
   }
 #endif
 
@@ -568,7 +576,7 @@ void WContainerWidget::propagateRenderOk(bool deep)
   flags_.reset(BIT_CONTENT_ALIGNMENT_CHANGED);
   flags_.reset(BIT_PADDINGS_CHANGED);
   flags_.reset(BIT_OVERFLOW_CHANGED);
-  flags_.reset(BIT_LAYOUT_CHANGED);
+  flags_.reset(BIT_LAYOUT_NEEDS_RERENDER);
   flags_.reset(BIT_LAYOUT_NEEDS_UPDATE);
 
 #ifndef WT_NO_LAYOUT
@@ -616,11 +624,11 @@ void WContainerWidget::getDomChanges(std::vector<DomElement *>& result,
 
 #ifndef WT_NO_LAYOUT
   if (!app->session()->renderer().preLearning()) {
-    if (flags_.test(BIT_LAYOUT_CHANGED)) {
+    if (flags_.test(BIT_LAYOUT_NEEDS_RERENDER)) {
       e->removeAllChildren(firstChildIndex());
       createDomChildren(*e, app);
 
-      flags_.reset(BIT_LAYOUT_CHANGED);
+      flags_.reset(BIT_LAYOUT_NEEDS_RERENDER);
       flags_.reset(BIT_LAYOUT_NEEDS_UPDATE);
     }
   }
@@ -699,7 +707,6 @@ void WContainerWidget::createDomChildren(DomElement& parent, WApplication *app)
       break;
     }
     case AlignLeft:
-      //c->setProperty(PropertyStyleFloat, "left");
       break;
     case AlignRight:
       c->setProperty(PropertyStyleFloat, "right");
@@ -710,7 +717,7 @@ void WContainerWidget::createDomChildren(DomElement& parent, WApplication *app)
 
     parent.addChild(c);
 
-    flags_.reset(BIT_LAYOUT_CHANGED);
+    flags_.reset(BIT_LAYOUT_NEEDS_RERENDER);
 #endif // WT_NO_LAYOUT
   } else {
     for (unsigned i = 0; i < children_->size(); ++i)
@@ -759,7 +766,7 @@ void WContainerWidget::updateDomChildren(DomElement& parent, WApplication *app)
 #ifndef WT_NO_LAYOUT
   if (flags_.test(BIT_LAYOUT_NEEDS_UPDATE)) {
     if (layout_)
-      layoutImpl()->updateDom();
+      layoutImpl()->updateDom(parent);
 
     flags_.reset(BIT_LAYOUT_NEEDS_UPDATE);
   }
@@ -802,10 +809,13 @@ void WContainerWidget::rootAsJavaScript(WApplication *app, std::ostream& out,
   propagateRenderOk(false);
 }
 
-void WContainerWidget::layoutChanged(bool deleted)
+void WContainerWidget::layoutChanged(bool rerender, bool deleted)
 {
 #ifndef WT_NO_LAYOUT
-  flags_.set(BIT_LAYOUT_CHANGED);
+  if (rerender)
+    flags_.set(BIT_LAYOUT_NEEDS_RERENDER);
+  else
+    flags_.set(BIT_LAYOUT_NEEDS_UPDATE);
 
   repaint(RepaintInnerHtml);
 

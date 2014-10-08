@@ -22,10 +22,33 @@
 #include <windows.h>
 #endif // WIN32
 
+#include <fstream>
+
 namespace Wt {
   LOGGER("FileUtils");
 
   namespace FileUtils {
+    std::vector<unsigned char> fileHeader(const std::string &fileName, 
+					  unsigned size)
+    {
+      std::vector<unsigned char> header;
+
+      std::ifstream file;
+      file.open(fileName.c_str(), std::ios::binary | std::ios::in);
+      
+      if (file.good()) {
+	file.seekg(0, std::ios::beg);
+	
+	header.resize(size);
+	file.read((char*)&header[0], size);
+	file.close();
+	
+	return header;
+      } else {
+	return header;
+      }
+    }
+
     unsigned long long size(const std::string &file) 
     {
 #ifndef WT_HAVE_POSIX_FILEIO
@@ -102,11 +125,7 @@ namespace Wt {
       }
       
       for (boost::filesystem::directory_iterator i(path); i != end_itr; ++i) {
-#if BOOST_FILESYSTEM_VERSION < 3
-	std::string f = Utils::lowerCase((*i).path().leaf());
-#else //BOOST_FILESYSTEM_VERSION < 3
-	std::string f = Utils::lowerCase((*i).path().leaf().string());
-#endif //BOOST_FILESYSTEM_VERSION < 3
+	std::string f = (*i).path().string();
 	files.push_back(f);
       }
 #else //WT_HAVE_POSIX_FILEIO
@@ -169,6 +188,21 @@ namespace Wt {
       delete [] spool;
       return returnSpool;
 #endif
+    }
+
+    std::string leaf(const std::string &file)
+    {
+      #ifdef WIN32
+      char separator = '\\';
+      #else
+      char separator = '/';
+      #endif
+
+      std::size_t pos = file.rfind(separator);
+      if (pos != std::string::npos)
+	return file.substr(pos + 1);
+      else
+	return file;
     }
 
   }

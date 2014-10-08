@@ -1,3 +1,5 @@
+window.onresize = function() { };
+
 function loadScript(url, callback) {
   var s = document.createElement('script');
 
@@ -97,8 +99,22 @@ function createUrl(name, value) {
 if (win.opera)
   win.opera.setOverrideHistoryNavigationMode("compatible");
 
-var pathInfo = _$_PATH_INFO_$_, deployPath = win.location.pathname;
-deployPath = deployPath.substr(0, deployPath.length - pathInfo.length);
+var pathInfo = _$_PATH_INFO_$_,
+    deployPath = win.location.pathname;
+
+if (!win.opera)
+  deployPath = decodeURIComponent(deployPath);
+
+/*
+ * Java's weird session encoding could put the path not in the end, e.g.
+ * /hello/internalpath;jsessionid=xyz
+ */
+if (pathInfo.length > 0) {
+  var pathI = deployPath.lastIndexOf(pathInfo);
+  if (pathI != -1)
+    deployPath = deployPath.substr(0, pathI)
+        + deployPath.substr(pathI + pathInfo.length);
+}
 var deployPathInfo = '&deployPath=' + encodeURIComponent(deployPath);
 
 // ajax support

@@ -202,13 +202,14 @@ WString WString::fromUTF8(const char *value, bool checkValid)
 void WString::checkUTF8Encoding(std::string& value)
 {
   const char *c = value.c_str();
-  for (; c != value.c_str() + value.length();) {
+  for (; c < value.c_str() + value.length();) {
     const char *at = c;
     try {
       char *dest = 0;
       rapidxml::xml_document<>::copy_check_utf8(c, dest);
     } catch (rapidxml::parse_error& e) {
-      for (const char *i = at; i < c; ++i)
+      for (const char *i = at; i < c && i < value.c_str() + value.length();
+        ++i)
 	value[i - value.c_str()] = '?';
     }
   }
@@ -360,32 +361,27 @@ WString& WString::arg(const WString& value)
 
 WString& WString::arg(int value)
 {
-  createImpl();
+  return arg(WString::fromUTF8(boost::lexical_cast<std::string>(value)));
+}
 
-  impl_->arguments_
-    .push_back(WString::fromUTF8(boost::lexical_cast<std::string>(value)));
-
-  return *this;
+WString& WString::arg(unsigned value)
+{
+  return arg(WString::fromUTF8(boost::lexical_cast<std::string>(value)));
 }
 
 WString& WString::arg(::int64_t value)
 {
-  createImpl();
+  return arg(WString::fromUTF8(boost::lexical_cast<std::string>(value)));
+}
 
-  impl_->arguments_
-    .push_back(WString::fromUTF8(boost::lexical_cast<std::string>(value)));
-
-  return *this;
+WString& WString::arg(::uint64_t value)
+{
+  return arg(WString::fromUTF8(boost::lexical_cast<std::string>(value)));
 }
 
 WString& WString::arg(double value)
 {
-  createImpl();
-
-  impl_->arguments_
-    .push_back(WString::fromUTF8(boost::lexical_cast<std::string>(value)));
-
-  return *this;
+  return arg(WString::fromUTF8(boost::lexical_cast<std::string>(value)));
 }
 
 bool WString::refresh()

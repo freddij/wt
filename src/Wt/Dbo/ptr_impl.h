@@ -20,6 +20,29 @@ namespace Wt {
 			      long long id) {
 	dbo.setId(id);
       }
+
+      template <class C, typename T>
+      long long asLongLong(const ptr<C>& ptr, const T& id) {
+	return -1;
+      }
+
+      template <class C>
+      long long asLongLong(const ptr<C>& ptr, const long long& id) {
+	return id;
+      }
+
+      template <class C, typename T>
+      T asIdType(const ptr<C>& ptr, long long id, const T& invalidId)
+      {
+	return invalidId;
+      }
+
+      template <class C>
+      long long asIdType(const ptr<C>& ptr, long long id,
+			 const long long& invalidId)
+      {
+	return id;
+      }
     }
 
 template <class C>
@@ -38,6 +61,7 @@ template <class C>
 void MetaDbo<C>::flush()
 {
   checkNotOrphaned();
+
   if (state_ & NeedsDelete) {
     state_ &= ~NeedsDelete;
 
@@ -48,9 +72,9 @@ void MetaDbo<C>::flush()
       setTransactionState(DeletedInTransaction);
       throw;
     }
-
   } else if (state_ & NeedsSave) {
     state_ &= ~NeedsSave;
+    state_ |= Saving;
 
     try {
       session()->implSave(*this);
@@ -59,6 +83,16 @@ void MetaDbo<C>::flush()
       setTransactionState(SavedInTransaction);
       throw;
     }
+  } else if (state_ & Saving) {
+    /*
+     * This must be because of a circular relational dependency:
+     *  A belongsTo(B)
+     *  B belongsTo(A)
+     *
+     * Could also be because of A belongsTo(A) which could be perfectly
+     * if the ptr is assigned after the object itself has been saved first.
+     */
+    // throw Exception("Wt::Dbo::ptr::flush(): circular dependency detected!");
   }
 }
 
@@ -546,6 +580,26 @@ template <class C>
 void query_result_traits< ptr<C> >::remove(ptr<C>& ptr)
 {
   ptr.remove();
+}
+
+template <class C>
+long long query_result_traits< ptr<C> >::id(const ptr<C>& ptr)
+{
+  return Impl::asLongLong(ptr, ptr.id());
+}
+
+template <class C>
+ptr<C> query_result_traits< ptr<C> >::findById(Session& session, long long id)
+{
+  typename dbo_traits<C>::IdType C_id = dbo_traits<C>::invalidId();
+  ptr<C> ptr;
+
+  C_id = Impl::asIdType(ptr, id, C_id);
+
+  if (C_id != dbo_traits<C>::invalidId())
+    ptr = session.load<C>(C_id);
+
+  return ptr;
 }
 
   }

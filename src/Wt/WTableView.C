@@ -85,8 +85,6 @@ WTableView::WTableView(WContainerWidget *parent)
     canvas_->setPositionScheme(Relative);
     canvas_->clicked()
       .connect(boost::bind(&WTableView::handleSingleClick, this, false, _1));
-    canvas_->doubleClicked()
-      .connect(boost::bind(&WTableView::handleDoubleClick, this, false, _1));
     canvas_->mouseWentDown()
       .connect(boost::bind(&WTableView::handleMouseWentDown, this, false, _1)); 
     canvas_->mouseWentUp()
@@ -115,8 +113,6 @@ WTableView::WTableView(WContainerWidget *parent)
     headerColumnsCanvas_->setPositionScheme(Relative);
     headerColumnsCanvas_->clicked()
       .connect(boost::bind(&WTableView::handleSingleClick, this, true, _1));
-    headerColumnsCanvas_->doubleClicked()
-      .connect(boost::bind(&WTableView::handleDoubleClick, this, true, _1));
     headerColumnsCanvas_->mouseWentDown()
       .connect(boost::bind(&WTableView::handleMouseWentDown, this, true, _1)); 
     headerColumnsCanvas_->mouseWentUp()
@@ -635,7 +631,7 @@ void WTableView::renderTable(const int fr, const int lr,
     << scrollX1 << ", " << scrollX2 << ", " << scrollY1 << ", " << scrollY2
     << ");";
 
-  WApplication::instance()->doJavaScript(s.str());			
+  doJavaScript(s.str());			
 }
 
 void WTableView::setHidden(bool hidden, const WAnimation& animation)
@@ -717,17 +713,39 @@ void WTableView::defineJavaScript()
 
   LOAD_JAVASCRIPT(app, "js/WTableView.js", "WTableView", wtjs1);
 
-  app->doJavaScript("new " WT_CLASS ".WTableView("
-		    + app->javaScriptClass() + "," + jsRef() + ","
-		    + contentsContainer_->jsRef() + ","
-		    + headerContainer_->jsRef() + ","
-		    + headerColumnsContainer_->jsRef() + ");");
+  setJavaScriptMember(" WTableView", "new " WT_CLASS ".WTableView("
+		      + app->javaScriptClass() + "," + jsRef() + ","
+		      + contentsContainer_->jsRef() + ","
+		      + headerContainer_->jsRef() + ","
+		      + headerColumnsContainer_->jsRef() + ");");
+
+  if (viewportTop_ != 0) {
+    WStringStream s;
+    s << "function(o, w, h) {"
+      <<   "if (!o.scrollTopSet) {"
+      <<     "o.scrollTop = " << viewportTop_ << ";"
+      <<     "o.onscroll();"
+      <<     "o.scrollTopSet = true;"
+      <<   "}"
+      << "}";
+    contentsContainer_->setJavaScriptMember(WT_RESIZE_JS, s.str());
+  }
 }
 
 void WTableView::render(WFlags<RenderFlag> flags)
 {
-  if (ajaxMode() && (flags & RenderFull))
-    defineJavaScript();
+  if (ajaxMode()) {
+    if (flags & RenderFull)
+      defineJavaScript();
+
+    if (!canvas_->doubleClicked().isConnected()
+	&& (editTriggers() & DoubleClicked || doubleClicked().isConnected())) {
+      canvas_->doubleClicked()
+	.connect(boost::bind(&WTableView::handleDoubleClick, this, false, _1));
+      headerColumnsCanvas_->doubleClicked()
+	.connect(boost::bind(&WTableView::handleDoubleClick, this, true, _1));
+    }
+  }
 
   if (model())
     while (renderState_ != RenderOk) {
@@ -1072,7 +1090,7 @@ void WTableView::setColumnBorder(const WColor& color)
   // FIXME
 }
 
-void WTableView::shiftModelIndexes(int start, int count)
+void WTableView::shiftModelIndexRows(int start, int count)
 {
   WModelIndexSet& set = selectionModel()->selection_;
   
@@ -1104,7 +1122,45 @@ void WTableView::shiftModelIndexes(int start, int count)
     set.insert(newIndex);
   }
 
-  shiftEditors(rootIndex(), start, count, true);
+  shiftEditorRows(rootIndex(), start, count, true);
+
+  if (!toErase.empty())
+    selectionChanged().emit();
+}
+
+void WTableView::shiftModelIndexColumns(int start, int count)
+{
+  WModelIndexSet& set = selectionModel()->selection_;
+  
+  std::vector<WModelIndex> toShift;
+  std::vector<WModelIndex> toErase;
+
+  for (WModelIndexSet::iterator it
+	 = set.lower_bound(model()->index(0, start, rootIndex()));
+       it != set.end(); ++it) {
+
+    if (count < 0) {
+      if ((*it).column() < start - count) {
+	toErase.push_back(*it);
+	continue;
+      }
+    }
+
+    toShift.push_back(*it);
+    toErase.push_back(*it);
+  }
+
+  for (unsigned i = 0; i < toErase.size(); ++i)
+    set.erase(toErase[i]);
+
+  for (unsigned i = 0; i < toShift.size(); ++i) {
+    WModelIndex newIndex = model()->index(toShift[i].row(),
+					  toShift[i].column() + count,
+					  toShift[i].parent());
+    set.insert(newIndex);
+  }
+
+  shiftEditorColumns(rootIndex(), start, count, true);
 
   if (!toErase.empty())
     selectionChanged().emit();
@@ -1123,6 +1179,8 @@ void WTableView::modelColumnsInserted(const WModelIndex& parent,
     columns_.insert(columns_.begin() + i, createColumnInfo(i));
     width += (int)columnInfo(i).width.toPixels() + 7;
   }
+
+  shiftModelIndexColumns(start, end - start + 1);
 
   if (ajaxMode())
     canvas_->setWidth(canvas_->width().toPixels() + width);
@@ -1149,6 +1207,8 @@ void WTableView::modelColumnsAboutToBeRemoved(const WModelIndex& parent,
       closeEditor(model()->index(r, c), false);
     }
   }
+
+  shiftModelIndexColumns(start, -(end - start + 1));
 
   int count = end - start + 1;
   int width = 0;
@@ -1182,7 +1242,7 @@ void WTableView::modelRowsInserted(const WModelIndex& parent,
   if (parent != rootIndex())
     return;
 
-  shiftModelIndexes(start, end - start + 1);
+  shiftModelIndexRows(start, end - start + 1);
 
   if (ajaxMode()) {
     canvas_->setHeight(canvasHeight());
@@ -1208,7 +1268,7 @@ void WTableView::modelRowsAboutToBeRemoved(const WModelIndex& parent,
     }
   }
 
-  shiftModelIndexes(start, -(end - start + 1));  
+  shiftModelIndexRows(start, -(end - start + 1));  
 }
 
 void WTableView::modelRowsRemoved(const WModelIndex& parent, int start, int end)
@@ -1633,12 +1693,14 @@ void WTableView::scrollTo(const WModelIndex& index, ScrollHint hint)
 	}
       }
 
-      WStringStream s;
+      if (isRendered()) {
+	WStringStream s;
 
-      s << "jQuery.data(" << jsRef() << ", 'obj').scrollTo(-1, "
-	<< rowY << "," << hint << ");";
+	s << "jQuery.data(" << jsRef() << ", 'obj').scrollTo(-1, "
+	  << rowY << "," << hint << ");";
 
-      doJavaScript(s.str());
+	doJavaScript(s.str());
+      }
     } else
       setCurrentPage(index.row() / pageSize());
   }

@@ -54,6 +54,7 @@ WT_DECLARE_WT_MEMBER
 
       for (i in style) {
 	var k = i;
+
 	if (k == "transform"
 	    || k == "transition"
 	    || k == "animationDuration")
@@ -71,6 +72,7 @@ WT_DECLARE_WT_MEMBER
       el.style.display = display;
       if (el.wtPosition)
 	el.wtPosition();
+      if (window.onshow) window.onshow();
     }
 
     function animateStaticVertical() {
@@ -142,7 +144,7 @@ WT_DECLARE_WT_MEMBER
 		el.scrollTop = 0;
 		if (elc)
 		  restore(elc, elcStyle);
-	      }
+	      } 
 	    });
 	}, 0);
     }
@@ -214,6 +216,7 @@ WT_DECLARE_WT_MEMBER
 	});
     }
 
+    setTimeout(function() { 
      var position = $el.css('position'),
        absolute = (position === 'absolute' || position === 'fixed');
 
@@ -237,7 +240,8 @@ WT_DECLARE_WT_MEMBER
        animateTransition();
        break;
      }
-   }
+   } , 0);
+  }
  }
 );
 

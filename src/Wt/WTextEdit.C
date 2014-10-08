@@ -11,6 +11,10 @@
 
 #include "DomElement.h"
 
+#ifndef WT_DEBUG_JS
+#include "js/WTextEdit.min.js"
+#endif
+
 namespace Wt {
 
 typedef std::map<std::string, boost::any> SettingsMapType;
@@ -36,10 +40,14 @@ void WTextEdit::init()
   setInline(false);
 
   initTinyMCE();
-  
+
+  setJavaScriptMember(" WTextEdit", "new " WT_CLASS ".WTextEdit("
+		      + app->javaScriptClass() + "," + jsRef() + ");");
+
   setJavaScriptMember
     (WT_RESIZE_JS,
-     "function(e,w,h){" WT_CLASS ".tinyMCEResize(e, w, h); };");
+     "function(e,w,h) { var obj = $('#" + id() + "').data('obj'); "
+     "obj.wtResize(e,w,h); };");
 
   std::string direction = app->layoutDirection() == LeftToRight ? "ltr" : "rtl";
   setConfigurationSetting("directionality", direction);
@@ -114,51 +122,27 @@ std::string WTextEdit::renderRemoveJs()
 
 void WTextEdit::initTinyMCE()
 {
-  std::string tinyMCEBaseURL = WApplication::resourcesUrl() + "tiny_mce/";
-
-  WApplication::readConfigurationProperty("tinyMCEBaseURL", tinyMCEBaseURL);
-
-  if (!tinyMCEBaseURL.empty()
-      && tinyMCEBaseURL[tinyMCEBaseURL.length()-1] != '/')
-    tinyMCEBaseURL += '/';
+  const char *THIS_JS = "js/WTextEdit.js";
 
   WApplication *app = WApplication::instance();
 
-  if (app->environment().ajax())
-    app->doJavaScript("window.tinyMCE_GZ = { loaded: true };", false);
+  if (!app->javaScriptLoaded(THIS_JS)) {
+    if (app->environment().ajax())
+      app->doJavaScript("window.tinyMCE_GZ = { loaded: true };", false);
 
-  if (app->require(tinyMCEBaseURL + "tiny_mce.js", "window['tinyMCE']")) {
-    /*
-      we should not use display:none for hiding?
-    */
+    std::string tinyMCEBaseURL = WApplication::resourcesUrl() + "tiny_mce/";
 
-    app->doJavaScript("if (!tinymce.dom.Event.domLoaded)"
-		      "  tinymce.dom.Event.domLoaded = true;"
-		      "tinyMCE.init();", false);
-    app->styleSheet().addRule(".mceEditor", "height: 100%;");
+    WApplication::readConfigurationProperty("tinyMCEBaseURL", tinyMCEBaseURL);
 
-    // Adjust the height: this can only be done by adjusting the iframe height.
-    app->doJavaScript
-      (WT_CLASS ".tinyMCEResize=function(e,w,h){"
-       """e.style.height = (h - 2) + 'px';"
-       ""
-       """var iframe = " WT_CLASS ".getElement(e.id + '_ifr');"
-       """if (iframe) {"
-       ""  "var row=iframe.parentNode.parentNode,"
-       ""      "tbl=row.parentNode.parentNode,"
-       ""      "i, il;"
-       ""
-       // deduct height of toolbars
-       ""  "for (i=0, il=tbl.rows.length; i<il; i++) {"
-       ""    "if (tbl.rows[i] != row)"
-       ""      "h -= Math.max(28, tbl.rows[i].offsetHeight);"
-       ""  "}"
-       ""
-       ""  "h = (h - 2) + 'px';"
-       ""
-       ""  "if (iframe.style.height != h) iframe.style.height=h;"
-       """}"
-       "};", false);
+    if (!tinyMCEBaseURL.empty()
+	&& tinyMCEBaseURL[tinyMCEBaseURL.length()-1] != '/')
+      tinyMCEBaseURL += '/';
+
+    app->require(tinyMCEBaseURL + "tiny_mce.js", "window['tinyMCE']");
+    app->styleSheet().addRule(".mceEditor",
+			      "display: block; position: absolute;");
+
+    LOAD_JAVASCRIPT(app, THIS_JS, "WTextEdit", wtjs1);
   }
 }
 
@@ -216,22 +200,18 @@ void WTextEdit::updateDom(DomElement& element, bool all)
     config << "plugins: '" << plugins() << "'";
 
     config <<
-      ",init_instance_callback: " << jsRef() << ".init" << ""
+      ",init_instance_callback: obj.init"
       "}";
 
     DomElement dummy(DomElement::ModeUpdate, DomElement_TABLE);
     updateDom(dummy, true);
 
-    /*
-     * When initialized, we apply the inline style.
-     */
-    element.callMethod("init=function(){"
-		       "var d=" WT_CLASS ".getElement('" + id() + "_tbl');"
-		       "d.style.cssText='width:100%;" + dummy.cssStyle() + "';"
-		       "};");
-    element.callMethod("ed=new tinymce.Editor('" + id() + "',"
-		       + config.str() + ");");
-    element.callMethod("ed.render();");
+    element.callJavaScript("(function() { "
+			   """var obj = $('#" + id() + "').data('obj');"
+			   """obj.render(" + config.str() + ","
+			   + jsStringLiteral(dummy.cssStyle())
+			   + ");"
+			   "})();");
 
     contentChanged_ = false;
   }

@@ -246,8 +246,11 @@ WAbstractItemView::WAbstractItemView(WContainerWidget *parent)
 
   WApplication *app = WApplication::instance();
 
+#ifdef OLD_LAYOUT
+  // FIXME Not needed for new layout managers ?
   if (app->environment().agentIsChrome())
     impl_->setMargin(1, Right); // Chrome WTF ? #452
+#endif
 
   typedef WAbstractItemView Self;
 
@@ -599,7 +602,6 @@ void WAbstractItemView::configureModelDragDrop()
     return;
 
   if (dragEnabled_) {
-    setAttributeValue("dmt", model_->mimeType());
     setAttributeValue("dsid",
 		      WApplication::instance()->encodeObject(selectionModel_));
 
@@ -630,25 +632,14 @@ void WAbstractItemView::checkDragSelection()
   /*
    * Check whether the current selection can be drag and dropped
    */
-  std::string dragMimeType = model_->mimeType();
+  computedDragMimeType_ = selectionModel_->mimeType();
 
-  if (!dragMimeType.empty()) {
-    const WModelIndexSet& selection = selectionModel_->selectedIndexes();
+  setAttributeValue("dmt", computedDragMimeType_);
 
-    bool dragOk = !selection.empty();
-
-    for (WModelIndexSet::const_iterator i = selection.begin();
-	 i != selection.end(); ++i)
-      if (!((*i).flags() & ItemIsDragEnabled)) {
-	dragOk = false;
-	break;
-      }
-
-    if (dragOk)
-      setAttributeValue("drag", "true");
-    else
-      setAttributeValue("drag", "false");
-  }
+  if (!computedDragMimeType_.empty())
+    setAttributeValue("drag", "true");
+  else
+    setAttributeValue("drag", "false");
 }
 
 WText *WAbstractItemView::headerSortIconWidget(int column)
@@ -940,8 +931,12 @@ void WAbstractItemView::modelHeaderDataChanged(Orientation orientation,
 
 int WAbstractItemView::headerLevel(int column) const
 {
-  return static_cast<int>
-    (asNumber(model_->headerData(column, Horizontal, LevelRole)));
+  boost::any d = model_->headerData(column, Horizontal, LevelRole);
+
+  if (!d.empty())
+    return static_cast<int>(asNumber(d));
+  else
+    return 0;
 }
 
 void WAbstractItemView::saveExtraHeaderWidgets()
@@ -1376,9 +1371,9 @@ bool WAbstractItemView::isEditing(const WModelIndex& index) const
   return editedItems_.find(index) != editedItems_.end();
 }
 
-bool WAbstractItemView::shiftEditors(const WModelIndex& parent,
-				     int start, int count,
-				     bool persistWhenShifted)
+bool WAbstractItemView::shiftEditorRows(const WModelIndex& parent,
+					int start, int count,
+					bool persistWhenShifted)
 {
   /* Returns whether an editor with a widget shifted */
   bool result = false;
@@ -1418,6 +1413,66 @@ bool WAbstractItemView::shiftEditors(const WModelIndex& parent,
 	    if (p.parent() == parent
 		&& p.row() >= start
 		&& p.row() < start - count) {
+	      toClose.push_back(c);
+	      break;
+	    } else
+	      p = p.parent();
+	  } while (p != parent);
+	}
+      }
+    }
+
+    for (unsigned i = 0; i < toClose.size(); ++i)
+      closeEditor(toClose[i]);
+
+    editedItems_ = newMap;
+  }
+
+  return result;
+}
+
+bool WAbstractItemView::shiftEditorColumns(const WModelIndex& parent,
+					   int start, int count,
+					   bool persistWhenShifted)
+{
+  /* Returns whether an editor with a widget shifted */
+  bool result = false;
+
+  if (!editedItems_.empty()) {
+    std::vector<WModelIndex> toClose;
+
+    EditorMap newMap;
+
+    for (EditorMap::iterator i = editedItems_.begin(); i != editedItems_.end();
+	 ++i) {
+      WModelIndex c = i->first;
+
+      WModelIndex p = c.parent();
+
+      if (p != parent && !WModelIndex::isAncestor(p, parent))
+	newMap[c] = i->second;
+      else {
+	if (p == parent) {
+	  if (c.column() >= start) {
+	    if (c.column() < start - count) {
+	      toClose.push_back(c);
+	    } else {
+	      WModelIndex shifted
+		= model_->index(c.row(), c.column() + count, p);
+	      newMap[shifted] = i->second;
+	      if (i->second.widget) {
+		if (persistWhenShifted)
+	 	  persistEditor(shifted, i->second);
+		result = true;
+              }
+	    }
+	  } else
+	    newMap[c] = i->second;
+	} else if (count < 0) {
+	  do {
+	    if (p.parent() == parent
+		&& p.column() >= start
+		&& p.column() < start - count) {
 	      toClose.push_back(c);
 	      break;
 	    } else

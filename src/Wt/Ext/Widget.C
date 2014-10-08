@@ -71,6 +71,23 @@ void Widget::initExt()
 				   ""   "}"
 				   "" "}");
 
+    if (app->environment().agentIsIE())
+      app->doJavaScript
+	("if ((typeof Range !== 'undefined')"
+	 ""    "&& !Range.prototype.createContextualFragment) {"
+	 """Range.prototype.createContextualFragment = function(html) {"
+	 ""  "var startNode = this.startContainer;"
+	 ""  "var doc = startNode.nodeType == 9 ? startNode :"
+	 ""            "startNode.ownerDocument;"
+	 ""  "var container = doc.createElement('div');"
+	 ""  "container.innerHTML = html;"
+	 ""  "var frag = doc.createDocumentFragment(), n;"
+	 ""  "while ( (n = container.firstChild) ) {"
+	 ""    "frag.appendChild(n);"
+	 ""  "}"
+	 ""  "return frag;"
+	 """};"
+	 "}", false);
     /*
      * Normally, Ext does this in its onReady function, but this is not
      * fired when loading ExtJS on demand.
@@ -380,8 +397,8 @@ void Widget::bindEventHandler(const std::string& eventName,
      << elVar() << "." << handler << ");";
 }
 
-/*! \defgroup ext Ext widgets (Wt::Ext)
- *  \brief %Wt %Ext library with JavaScript-only widgets.
+/*! \defgroup ext Ext widgets (Wt::Ext, deprecated)
+ *  \brief %Wt %Ext library with JavaScript-only widgets (<b>deprecated</b>).
  *
  * \section bla 1. Introduction
  *
@@ -491,6 +508,8 @@ void Widget::bindEventHandler(const std::string& eventName,
  * be overridden with a URL that points to a folder where these files
  * are located, by configuring the <i>extBaseURL</i> property in your
  * %Wt configuration file.
+ *
+ * \deprecated Use native widgets instead.
  */
 
 }

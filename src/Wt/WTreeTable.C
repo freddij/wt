@@ -45,8 +45,6 @@ WTreeTable::WTreeTable(WContainerWidget *parent)
 
   WContainerWidget *content = new WContainerWidget(impl_);
   content->setStyleClass("Wt-content");
-  content->resize(WLength(100, WLength::Percentage),
-		  WLength(100, WLength::Percentage));
   if (!wApp->environment().agentIsIE())
     content->setOverflow(WContainerWidget::OverflowAuto);
   else
@@ -65,12 +63,7 @@ void WTreeTable::defineJavaScript()
 
   LOAD_JAVASCRIPT(app, "js/WTreeTable.js", "WTreeTable", wtjs1);
 
-  /*
-   * We should really resolve this: we use setJavaScriptMember()
-   * instead of doJavaScript(), because setJavaScriptMember() is streamed
-   * before doJavaScript()
-   */
-  setJavaScriptMember("_a", "0;new " WT_CLASS ".WTreeTable("
+  setJavaScriptMember(" WTreeTable", "new " WT_CLASS ".WTreeTable("
 		      + app->javaScriptClass() + "," + jsRef() + ");");
 }
 

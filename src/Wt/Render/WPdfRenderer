@@ -29,6 +29,7 @@ namespace Wt {
  * setFontScale() to scale the font size differently than other
  * content.
  *
+ * \if cpp
  * Usage example:
  *
  * \code
@@ -50,10 +51,11 @@ namespace Wt {
  * HPDF_SaveToFile(pdf, "hello.pdf");
  * HPDF_Free(pdf);
  * \endcode
+ * \endif
  *
  * \ingroup render
  */
-class WPdfRenderer : public WTextRenderer
+class WT_API WPdfRenderer : public WTextRenderer
 {
 public:
   /*! \brief Creates a new PDF renderer.

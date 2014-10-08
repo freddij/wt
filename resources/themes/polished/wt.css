@@ -262,33 +262,40 @@
  * WGridLayout
  */
 
-.Wt-hrh div, .Wt-vsh {
+.Wt-hrh div, .Wt-vsh, .Wt-hrh2, .Wt-vsh2 {
     cursor: row-resize;
+}
+
+.Wt-hrh div, .Wt-vsh {
     margin: 2px;
 }
 
-.Wt-vrh div, .Wt-hsh {
+.Wt-vrh div, .Wt-hsh, .Wt-vrh2, .Wt-hsh2 {
     cursor: col-resize;
+}
+
+.Wt-vrh div, .Wt-hsh {
     margin: 0px 2px;
 }
 
-.Wt-hrh div {
+.Wt-hrh div, .Wt-hrh2 {
     background: url(splitter-v.png) no-repeat 50% 50%;
 }
 
-.Wt-vrh div {
+.Wt-vrh div, .Wt-vrh2 {
     background: url(splitter-h.png) no-repeat 50% 50%;
 }
 
-.Wt-hrh div, .Wt-vrh div {
+.Wt-hrh div, .Wt-vrh div, .Wt-vrh2 {
     background-color: #EEEEEE;
 }
 
-.Wt-hsh, .Wt-vsh {
+.Wt-hsh, .Wt-vsh, .Wt-hsh2, .Wt-vsh2 {
     background-color: #8ea2bd;
 }
 
-.Wt-hrh div:hover, .Wt-vrh div:hover {
+.Wt-hrh div:hover, .Wt-vrh div:hover,
+.Wt-vrh2:hover, .Wt-hrh2:hover {
     background-color: #8ea2bd;
 }
 
@@ -684,12 +691,13 @@ body.Wt-rtl .Wt-tabs .citem, body.Wt-rtl .Wt-tabs .citemselected {
  */
 .Wt-tooltip {
     position: absolute;
-    max-width: 300px;
-    background-color: #ede0b2;
+    max-width: 1000px;
+    background-color: #ffffcc;
     border: 1px solid black;
     padding: 1px 2px;
     font-family: sans-serif;
     font-size: smaller;
+    z-index: 1000;
 }
 
 /*
@@ -777,17 +785,21 @@ body.Wt-rtl .Wt-tabs .citem, body.Wt-rtl .Wt-tabs .citemselected {
     width: 100%;
 }
 
-.Wt-itemview div.Wt-tv-rh {
+.Wt-itemview .Wt-tv-rh {
     float: right;
     width: 4px;
     cursor: col-resize;
 }
 
-body.Wt-rtl .Wt-itemview div.Wt-tv-rh {
+.Wt-itemview .Wt-disabled .Wt-tv-rh {
+    cursor: default;
+}
+
+body.Wt-rtl .Wt-itemview .Wt-tv-rh {
     float: left;
 }
 
-.Wt-itemview div.Wt-tv-no-rh {
+.Wt-itemview .Wt-tv-no-rh {
     width: 0px;
     margin-left: 4px;
     cursor: default;
@@ -800,7 +812,12 @@ body.Wt-rtl .Wt-itemview div.Wt-tv-rh {
     height: 16px;
     padding-bottom: 6px;
     cursor: pointer;
-    cursor:hand;
+    cursor: hand;
+}
+
+.Wt-itemview .Wt-disabled .Wt-tv-sh {
+    background: url(sort-arrow-disabled.gif) no-repeat 0 6px;
+    cursor: default;
 }
 
 body.Wt-rtl .Wt-itemview .Wt-tv-sh {
@@ -838,6 +855,10 @@ body.Wt-rtl .Wt-itemview .Wt-tv-sh {
     white-space: nowrap;
 }
 
+.Wt-itemview .Wt-header .Wt-disabled .Wt-label {
+    color: gray;
+}
+
 .Wt-itemview .Wt-header .Wt-wwrap .Wt-label {
     overflow: visible;
     white-space: normal;
@@ -845,6 +866,10 @@ body.Wt-rtl .Wt-itemview .Wt-tv-sh {
 
 .Wt-itemview .Wt-tv-rh:hover {
     background-color: #DDDDDD;
+}
+
+.Wt-itemview .Wt-disabled .Wt-tv-rh:hover {
+    background-color: transparent;
 }
 
 .Wt-itemview .Wt-tv-sh-none {

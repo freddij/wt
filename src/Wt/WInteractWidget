@@ -226,6 +226,9 @@ public:
     
   /*! \brief Event signal emitted when the mouse entered this widget.
    *
+   * The signal is emitted as soon as the mouse enters the widget, or
+   * after some delay as configured by setMouseOverDelay()
+   *
    * \note When JavaScript is disabled, the signal will never fire.
    */
   EventSignal<WMouseEvent>& mouseWentOver();
@@ -348,6 +351,23 @@ public:
   void setDraggable(const std::string& mimeType, WWidget *dragWidget = 0,
 		    bool isDragWidgetOnly = false, WObject *sourceWidget = 0);
 
+  /*! \brief Sets a delay for the mouse over event.
+   *
+   * This sets a delay (in milliseconds) before the mouse over event
+   * is emitted.
+   *
+   * The default value is 0.
+   *
+   * \sa mouseWentOver()
+   */
+  void setMouseOverDelay(int delay);
+
+  /*! \brief Returns the mouse over signal delay.
+   *
+   * \sa setMouseOverDelay()
+   */
+  int mouseOverDelay() const;
+
   virtual void load();
   virtual bool isEnabled() const;
 
@@ -362,9 +382,10 @@ protected:
 
 protected:
   // also used in WAbstractToggleButton
-  static const char *CLICK_SIGNAL;
+  static const char *M_CLICK_SIGNAL;
 
 private:
+  static const char *CLICK_SIGNAL;
   static const char *KEYDOWN_SIGNAL;
   static const char *KEYPRESS_SIGNAL;
   static const char *KEYUP_SIGNAL;
@@ -426,7 +447,10 @@ private:
 
 
   friend class DomElement;
+  friend class WAbstractToggleButton;
   friend class WWebWidget;
+
+  int mouseOverDelay_;
 };
 
 }

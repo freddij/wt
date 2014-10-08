@@ -19,31 +19,26 @@ namespace Wt {
 struct Grid {
   int horizontalSpacing_, verticalSpacing_;
 
-  struct Row {
+  struct Section {
     int stretch_;
     bool resizable_;
+    WLength initialSize_;
 
-    Row(int stretch = 0);
-  };
-
-  struct Column {
-    int stretch_;
-    bool resizable_;
-
-    Column(int stretch = 0);
+    Section(int stretch = 0);
   };
 
   struct Item {
     WLayoutItem *item_;
     int rowSpan_;
     int colSpan_;
+    bool update_;
     WFlags<AlignmentFlag> alignment_;
 
     Item(WLayoutItem *item = 0, WFlags<AlignmentFlag> alignment = 0);
   };
 
-  std::vector<Row>    rows_;
-  std::vector<Column> columns_;
+  std::vector<Section> rows_;
+  std::vector<Section> columns_;
   std::vector<std::vector<Item> > items_; // [row][column]
 
   Grid();
@@ -57,68 +52,63 @@ struct Grid {
 /*! \class WGridLayout Wt/WGridLayout Wt/WGridLayout
  *  \brief A layout manager which arranges widgets in a grid
  *
- * This is a layout class that arranges widgets in a grid, to span the
- * entire area of the parent container. Each grid location (row,
- * column) may contain one widget or nested layout. Horizontal and
- * vertical space are divided so that each column/row is given its
- * minimum size and the remaining space is dived according to stretch
- * factors among the columns/rows. The minimum width of a column/row
- * is based on the minimum dimensions of contained widgets or nested
- * layouts. The default minimum height and width may be overridden
- * using WWidget::setMinimumSize().
+ * This layout manager arranges widgets in a grid.
  *
- * If you want to use the layout manager for a container which does
- * not have a height that is constrained somehow, you need to specify
- * AlignTop in the alignment flags of
- * WContainerWidget::setLayout(). Otherwise the behavior is undefined
- * (the parent container will continue to increase in size as it tries
- * to satisfy the constraints assuming a contrained height).
+ * Each grid cell (row, column) may contain one widget or nested
+ * layout. Horizontal and vertical space are divided so that each
+ * non-stretchable column/row is given its preferred size (if
+ * possible) and the remaining space is divided according to stretch
+ * factors among the columns/rows. If not all columns/rows can be
+ * given their preferred size (there is not enough room), then
+ * columns/rows are given a smaller size (down to a minimum size based
+ * on widget minimum sizes). If necessary, the container (or parent
+ * layout) of this layout is resized to meet minimum size
+ * requirements.
  *
- * You can use \link WContainerWidget::setOverflow()
+ * The preferred width/height of a column/row is based on the natural
+ * size of the widgets, where they present their contents without
+ * overflowing. WWidget::resize() or (CSS <tt>width</tt>,
+ * <tt>height</tt> properties) can be used to adjust the preferred
+ * size of a widget.
+ *
+ * The minimum width/height of a column/row is based on the minimum
+ * dimensions of contained widgets or nested layouts. The default
+ * minimum height and width for a widget is 0. It can be specified
+ * using WWidget::setMinimumSize() or using CSS <tt>min-width</tt> and
+ * <tt>min-height</tt> properties.
+ *
+ * You should use \link WContainerWidget::setOverflow()
  * WContainerWidget::setOverflow(OverflowAuto) \endlink or use a
- * WScrollArea to automatically show scrollbars on a widget inserted
- * in the layout.
+ * WScrollArea to automatically show scrollbars for widgets inserted
+ * in the layout to cope with a size set by the layout manager that is
+ * smaller than the preferred size.
  *
- * A caveat with layout managers is that you cannot reliably use a
- * stylesheet to add borders (or margin) to a widget inserted in a
- * layout: this is broken on Internet Explorer. To provide the layout,
- * the layout manager needs to set sizes on the contained widget but
- * these sizes also need to take into account the border/margin
- * width. Since on IE, this value will be 0 if the border or margin is
- * provided by a stylesheet (as opposed to by inline CSS by using
- * WWidget::decorationStyle()), the result will be wrong behaviour
- * like widgets that keep growing in size.
+ * When the container of a layout manager has a maximum size set using
+ * WWidget::setMaximumSize(), then the size of the container will be
+ * based on the preferred size of the contents, up to this maximum
+ * size, instead of the default behaviour of constraining the size of
+ * the children based on the size of the container.
  *
  * A layout manager may provide resize handles between columns or rows
  * which allow the user to change the automatic layout provided by the
  * layout manager (see setRowResizable() and
- * setColumnResizable()). Resize handles between rows only work when
- * the layout fills the parent vertical space (i.e. is not aligned to
- * the top). Likewise, resize handles between columns only work when
- * the layout fills the parent horiziontal space (i.e. is not aligned
- * left, right or centered).
+ * setColumnResizable()).
  *
  * Columns and rows are separated using a constant spacing, which
  * defaults to 6 pixels by default, and can be changed using
  * setHorizontalSpacing() and setVerticalSpacing(). In addition, when
  * this layout is a top-level layout (i.e. is not nested inside
- * another layout), a margin is set around the contents, which thus
- * replaces padding defined for the container. It is not allowed to
- * define padding for the container widget using its CSS 'padding'
- * property or the WContainerWidget::setPadding(). This margin also
- * defaults to 9 pixels, and can be changed using
- * setContentsMargins().
+ * another layout), a margin is set around the contents. This margin
+ * defaults to 9 pixels, and can be changed using setContentsMargins().
  *
  * For each column or row, a stretch factor may be defined, which
  * controls how remaining horizontal or vertical space is used. Each
  * column and row is stretched using the stretch factor to fill the
- * remaining space. When the stretch factor is 0, the height of the row
- * and its contents is not actively managed. As a consequence, the contents
- * of each cell will not fill the cell. You may use a special stretch factor
- * of -1 to indicate that the height of the row should not stretch but the
- * contents height should be actively managed. This has as draw-back that
- * the height of the row will no longer reduce in size when any of the cell
- * contents reduces in size.
+ * remaining space. When the stretch factor is 0, the height of the
+ * row and its contents is set to the preferred size (if
+ * possible). When the stretch factor is 1 or higher, these widgets
+ * will be given the remaining size, limited only by their minimum
+ * size (their preferred size is ignored).
  *
  * Usage example:
  * \if cpp
@@ -155,19 +145,14 @@ struct Grid {
  * indirectly by first setting a WContainerWidget using a WFitLayout.
  * \endif
  *
- * \note When JavaScript support is not available, only Safari and
- * Firefox properly implement this layout. For other browsers, only
- * the horizontal layout is properly implemented, while vertically all
- * widgets use their minimum size.
+ * \note When JavaScript support is not available, not all functionality
+ * of the layout is available. In particular, vertical size management is
+ * not available.
  *
- * \note When set on a WContainerWidget, this layout manager accepts the
- *       following hints (see setLayoutHint()):
- *   <ul>
- *     <li>"table-layout" with possible values "auto" (default) or "fixed".<br>
- *       Use "fixed" to prevent nested tables from overflowing the layout.
- *       In that case, you will need to specify a width (in CSS or otherwise)
- *       for at least one item in every column that has no stretch factor.</li>
- *  </ul>
+ * \note When a layout is used on a first page with progressive
+ * bootstrap, then the layout will progress only in a limited way to a
+ * full JavaScript-based layout. You can thus not rely on it to behave
+ * properly for example when dynamically adding or removing widgets.
  */
 class WT_API WGridLayout : public WLayout
 {
@@ -177,8 +162,8 @@ public:
    * The grid will grow dynamically as items are added.
    *
    * Use \p parent = \c 0 to create a layout manager that can be
-   * nested inside other layout managers or to specify a specific alignment
-   * when setting the layout to a WContainerWidget.
+   * nested inside other layout managers or if you use
+   * WContainerWidget::setLayout() to add specify the container later.
    */
   WGridLayout(WWidget *parent = 0);
 
@@ -357,8 +342,7 @@ public:
 
   /*! \brief Sets the row stretch.
    *
-   * Sets the <i>stretch</i> factor for row \p row. See the
-   * description for the special value of -1.
+   * Sets the <i>stretch</i> factor for row \p row.
    *
    * \sa rowStretch()
    */
@@ -377,8 +361,13 @@ public:
    * depending on the value of <i>enabled</i>.
    *
    * The default value is <i>false</i>.
+   *
+   * If an \p initialSize is given (that is not WLength::Auto), then
+   * this size is used for the width of the column, overriding the width
+   * it would be given by the layout manager.
    */
-  void setColumnResizable(int column, bool enabled = true);
+  void setColumnResizable(int column, bool enabled = true,
+			  const WLength& initialSize = WLength::Auto);
 
   /*! \brief Returns whether the user may drag a particular column border.
    *
@@ -396,8 +385,13 @@ public:
    * <i>enabled</i>.
    *
    * The default value is <i>false</i>.
+   *
+   * If an \p initialSize is given (that is not WLength::Auto), then
+   * this size is used for the height of the row, overriding the height
+   * it would be given by the layout manager.
    */
-  void setRowResizable(int row, bool enabled = true);
+  void setRowResizable(int row, bool enabled = true,
+		       const WLength& initialSize = WLength::Auto);
 
   /*! \brief Returns whether the user may drag a particular row border.
    *

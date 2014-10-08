@@ -13,7 +13,7 @@
 #ifndef WIN32
 #include <arpa/inet.h>
 #else
-#include <Winsock2.h>
+#include <winsock2.h>
 #endif
 
 #include "Wt/WLogger"
@@ -21,6 +21,7 @@
 #include "DomElement.h"
 #include "md5.h"
 #include "base64.h"
+#include "ImageUtils.h"
 
 extern "C" {
   #include "sha1.h"
@@ -28,7 +29,7 @@ extern "C" {
 
 namespace Wt {
 
-LOGGER("Wt::Utils");
+LOGGER("Utils");
 
   namespace Utils {
 
@@ -101,11 +102,14 @@ std::string sha1(const std::string& text)
   }
 }
 
-std::string base64Encode(const std::string& data)
+std::string base64Encode(const std::string& data, bool crlf)
 {
   std::vector<char> v;
+  
+  // base64 encoded value will be 4/3 larger than original value
+  v.reserve((std::size_t)(data.size() * 1.35)); 
 
-  base64::encode(data.begin(), data.end(), std::back_inserter(v));
+  base64::encode(data.begin(), data.end(), std::back_inserter(v), crlf);
 
   return std::string(v.begin(), v.end());
 }
@@ -113,6 +117,9 @@ std::string base64Encode(const std::string& data)
 std::string base64Decode(const std::string& data)
 {
   std::vector<char> v;
+  
+  // decoded value will be 3/4 smaller than encoded value
+  v.reserve((std::size_t)(data.size() * 0.8));
 
   base64::decode(data.begin(), data.end(), std::back_inserter(v));
 
@@ -186,6 +193,15 @@ std::string urlDecode(const std::string &text)
 bool removeScript(WString& text)
 {
   return WWebWidget::removeScript(text);
+}
+
+std::string guessImageMimeTypeData(const std::vector<unsigned char>& header)
+{
+  return Wt::Image::identifyImageMimeType(header);
+}
+std::string guessImageMimeType(const std::string& file)
+{
+  return Wt::Image::identifyImageFileMimeType(file);
 }
   
   }

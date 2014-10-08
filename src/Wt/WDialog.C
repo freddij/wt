@@ -7,6 +7,7 @@
 #include "Wt/WContainerWidget"
 #include "Wt/WDialog"
 #include "Wt/WException"
+#include "Wt/WVBoxLayout"
 #include "Wt/WTemplate"
 #include "Wt/WText"
 
@@ -35,13 +36,6 @@ WDialog::WDialog(const WString& windowTitle)
 
   WApplication *app = WApplication::instance();
 
-  /*
-   * Cannot be done using the CSS stylesheet in case there are
-   * contained elements with setHideWithOffsets() set
-   */
-  setPositionScheme(app->environment().agent() == WEnvironment::IE6
-		    ? Absolute : Fixed);
-
   if (!app->styleSheet().isDefined(CSS_RULES_NAME)) {
     /* Needed for the dialog cover */
     if (app->environment().agentIsIElt(9))
@@ -54,8 +48,8 @@ WDialog::WDialog(const WString& windowTitle)
     // see below for an IE workaround
     app->styleSheet().addRule("div.Wt-dialog", std::string() +
 			      (app->environment().ajax() ?
-			       "visibility: hidden;" : "") +
-			      "position: " + position + ';'
+			       "visibility: hidden;" : "") 
+			      //"position: " + position + ';'
 			      + (!app->environment().ajax() ?
 				 "left: 50%; top: 50%;"
 				 "margin-left: -100px; margin-top: -50px;" :
@@ -94,20 +88,48 @@ WDialog::WDialog(const WString& windowTitle)
   WContainerWidget *parent = app->domRoot();
   parent->addWidget(this);
 
+  WContainerWidget *layoutContainer = new WContainerWidget();
+  layoutContainer->setStyleClass("dialog-layout");
+  WVBoxLayout *layout = new WVBoxLayout(layoutContainer);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(0);
+
   titleBar_ = new WContainerWidget();
   titleBar_->setStyleClass("titlebar");
 
   caption_ = new WText(windowTitle, titleBar_);
   
   impl_->bindString("shadow-x1-x2", WTemplate::DropShadow_x1_x2);
-  impl_->bindWidget("titlebar", titleBar_);
+  impl_->bindWidget("layout", layoutContainer);
+
+  layout->addWidget(titleBar_);
 
   contents_ = new WContainerWidget();
   contents_->setStyleClass("body");
 
-  impl_->bindWidget("contents", contents_);
+  layout->addWidget(contents_, 1);
 
   saveCoverState(app, app->dialogCover());
+
+  /*
+   * Cannot be done using the CSS stylesheet in case there are
+   * contained elements with setHideWithOffsets() set
+   *
+   * For IE, we cannot set it yet since it will confuse width measurements
+   * to become minimum size instead of (unconstrained) preferred size
+   */
+  if (app->environment().ajax()) {
+    setAttributeValue("style", "visibility: hidden");
+
+    /*
+     * This is needed for animations only, but setting absolute or
+     * fixed positioning confuses layout measurement in IE browsers
+     */
+    if (!app->environment().agentIsIElt(9))
+      setPositionScheme(Fixed);
+  } else
+    setPositionScheme(app->environment().agent() == WEnvironment::IE6
+		      ? Absolute : Fixed);
 
   hide();
 }
@@ -124,16 +146,30 @@ void WDialog::setResizable(bool resizable)
     toggleStyleClass("Wt-resizable", resizable);
     setSelectable(!resizable);
 
+    if (resizable)
+      contents_->setSelectable(true);
+
     if (resizable_) {
       setMinimumSize(WLength::Auto, WLength::Auto);
       Resizable::loadJavaScript(WApplication::instance());
-      doJavaScript("(new " WT_CLASS ".Resizable("
-		   WT_CLASS "," + jsRef() + ")).onresize(function(w, h) {"
-		   "var obj = $('#" + id() + "').data('obj');"
-		   "if (obj) obj.onresize(w, h);"
-		   " });");
+      setJavaScriptMember(" Resizable",
+			  "(new " WT_CLASS ".Resizable("
+			  WT_CLASS "," + jsRef() + ")).onresize(function(w, h) {"
+			  "var obj = $('#" + id() + "').data('obj');"
+			  "if (obj) obj.onresize(w, h);"
+			  " });");
     }
   }
+}
+
+void WDialog::setMaximumSize(const WLength& width, const WLength& height)
+{
+  WCompositeWidget::setMaximumSize(width, height);
+
+  WLength w = width.unit() != WLength::Percentage ? width : WLength::Auto;
+  WLength h = height.unit() != WLength::Percentage ? height : WLength::Auto;
+
+  impl_->resolveWidget("layout")->setMaximumSize(w, h);
 }
 
 void WDialog::render(WFlags<RenderFlag> flags)
@@ -146,16 +182,20 @@ void WDialog::render(WFlags<RenderFlag> flags)
     bool centerX = offset(Left).isAuto() && offset(Right).isAuto(),
       centerY = offset(Top).isAuto() && offset(Bottom).isAuto();
 
-    setJavaScriptMember("_a","0;new " WT_CLASS ".WDialog("
-			+ app->javaScriptClass() + "," + jsRef()
-			+ "," + (centerX ? "1" : "0")
-			+ "," + (centerY ? "1" : "0") + ");");
-    // so that WWidget::resize() calls it; it is set by js: WDialog()
-    setJavaScriptMember(WT_RESIZE_JS, "\"dummy\"");
+    /*
+     * Make sure layout adjusts to contents preferred width, especially
+     * important for IE workaround which uses static position scheme
+     */
+    if (app->environment().ajax())
+      if (width().isAuto())
+	if (maximumWidth().unit() == WLength::Percentage ||
+	    maximumWidth().toPixels() == 0)
+	  impl_->resolveWidget("layout")->setMaximumSize(999999, maximumHeight());
 
-    app->addAutoJavaScript
-      ("{var obj = $('#" + id() + "').data('obj');"
-       "if (obj) obj.centerDialog();}");
+    doJavaScript("new " WT_CLASS ".WDialog("
+		 + app->javaScriptClass() + "," + jsRef()
+		 + "," + (centerX ? "1" : "0")
+		 + "," + (centerY ? "1" : "0") + ");");
 
     /*
      * When a dialog is shown immediately for a new session, the recentering
@@ -324,7 +364,7 @@ void WDialog::setHidden(bool hidden, const WAnimation& animation)
 
 	// FIXME: this should only blur if the active element is outside
 	// of the dialog
-	app->doJavaScript
+	doJavaScript
 	  ("try {"
 	   """if (document.activeElement && document.activeElement.blur)"
 	   ""  "document.activeElement.blur();"

@@ -26,8 +26,12 @@ public:
     : spinBox_(spinBox)
   { }
 
-  virtual Result validate(WT_USTRING& input) const {
-    return spinBox_->parseValue(input) ? Result(Valid) : Result(Invalid);
+  virtual Result validate(const WT_USTRING& input) const {
+    bool valid = spinBox_->parseValue(input);
+    if (valid)
+      return spinBox_->validateRange();
+    else
+      return Result(Invalid);
   }
 
   virtual std::string javaScriptValidate() const {
@@ -42,10 +46,9 @@ WAbstractSpinBox::WAbstractSpinBox(WContainerWidget *parent)
   : WLineEdit(parent),
     changed_(false),
     valueChangedConnection_(false),
-    preferNative_(false)
-{ 
-  setJavaScriptMember("_a", "0");
-}
+    preferNative_(false),
+    setup_(false)
+{ }
 
 void WAbstractSpinBox::setNativeControl(bool nativeControl)
 {
@@ -81,9 +84,9 @@ void WAbstractSpinBox::render(WFlags<RenderFlag> flags)
    * In theory we are a bit late here to decide what we want to become:
    * somebody could already have asked the domElementType()
    */
-  if (flags & RenderFull) {
+  if (!setup_ && flags & RenderFull) {
+    setup_ = true;
     bool useNative = nativeControl();
-
     setup(useNative);
   }
 
@@ -115,7 +118,7 @@ void WAbstractSpinBox::defineJavaScript()
     + suffix().jsStringLiteral() + ","
     + jsMinMaxStep() + ");";
 
-  setJavaScriptMember("_a", "0;" + jsObj);
+  setJavaScriptMember(" WSpinBox", jsObj);
 }
 
 void WAbstractSpinBox::setText(const WT_USTRING& text)
@@ -137,10 +140,9 @@ void WAbstractSpinBox::updateDom(DomElement& element, bool all)
   if (all || changed_) {
     if (!all) {
       if (!nativeControl())
-	WApplication::instance()->doJavaScript
-	  ("jQuery.data(" + jsRef() + ", 'obj')"
-	   ".update(" + jsMinMaxStep() + ","
-	   + boost::lexical_cast<std::string>(decimals()) + ");");
+	doJavaScript("jQuery.data(" + jsRef() + ", 'obj')"
+		     ".update(" + jsMinMaxStep() + ","
+		     + boost::lexical_cast<std::string>(decimals()) + ");");
       else
 	setValidator(createValidator());
     }

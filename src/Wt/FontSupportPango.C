@@ -89,8 +89,7 @@ FontSupport::FontSupport(WPaintDevice *paintDevice)
   if (!pangoFontMap)
     pangoFontMap = pango_ft2_font_map_new();
 
-  context_
-    = pango_ft2_font_map_create_context((PangoFT2FontMap*)pangoFontMap);
+  context_ = pango_font_map_create_context(pangoFontMap);
 
   currentFont_ = 0;
 }
@@ -395,7 +394,9 @@ WTextItem FontSupport::measureText(const WFont& font, const WString& text,
 							    cend - measured)),
 			-1, false);
 
-	if (w + ti.width() > maxWidth) {
+	const double EPSILON = 1e-4;
+
+	if (w + ti.width() - maxWidth > EPSILON) {
 	  nextW = ti.width();
 	  maxWidthReached = true;
 	  break;

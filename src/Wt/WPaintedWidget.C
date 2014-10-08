@@ -142,6 +142,9 @@ void WPaintedWidget::resize(const WLength& width, const WLength& height)
 
 void WPaintedWidget::resizeCanvas(int width, int height)
 {
+  if (renderWidth_ == width && renderHeight_ == height)
+    return;
+
   renderWidth_ = width;
   renderHeight_ = height;
 
@@ -515,6 +518,7 @@ void WWidgetCanvasPainter::createContents(DomElement *result,
 
   result->setProperty(PropertyStylePosition, "relative");
   result->setProperty(PropertyStyleOverflowX, "hidden");
+  result->setProperty(PropertyStyleOverflowY, "hidden");
 
   DomElement *canvas = DomElement::createNew(DomElement_CANVAS);
   canvas->setId('c' + widget_->id());

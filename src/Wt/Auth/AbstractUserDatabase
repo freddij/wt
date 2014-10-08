@@ -47,6 +47,8 @@ namespace Wt {
  * can thus be optionally provided by a database implementation.
  *
  * \sa User
+ *
+ * \ingroup auth
  */
 class WT_API AbstractUserDatabase
 {
@@ -152,6 +154,12 @@ public:
    * registration (RegistrationWidget).
    */
   virtual User registerNew(); 
+
+  /*! \brief Delete a user.
+   *
+   * This deletes a user from the database.
+   */
+  virtual void deleteUser(const User& user);
 
   /*! \brief Returns the status for a user.
    *
@@ -329,10 +337,6 @@ public:
    */
   virtual WDateTime lastLoginAttempt(const User& user) const;
   //@}
-
-#ifdef WT_TARGET_JAVA
-  virtual User addUser(const User& user);
-#endif
 
 protected:
   AbstractUserDatabase();

@@ -181,10 +181,10 @@ void WFormWidget::defineJavaScript(bool force)
 
     LOAD_JAVASCRIPT(app, "js/WFormWidget.js", "WFormWidget", wtjs1);
 
-    doJavaScript("new " WT_CLASS ".WFormWidget("
-		 + app->javaScriptClass() + "," 
-		 + jsRef() + ","
-		 + emptyText_.jsStringLiteral() + ");");
+    setJavaScriptMember(" WFormWidget", "new " WT_CLASS ".WFormWidget("
+			+ app->javaScriptClass() + "," 
+			+ jsRef() + ","
+			+ emptyText_.jsStringLiteral() + ");");
   }
 }
 
@@ -242,7 +242,7 @@ void WFormWidget::validatorChanged()
       if (domElementType() != DomElement_SELECT)
 	clicked().connect(*validateJs_);
     } else if (isRendered())
-      validateJs_->exec(jsRef());
+      doJavaScript(validateJs_->execJs(jsRef()));
   } else {
     delete validateJs_;
     validateJs_ = 0;
@@ -326,12 +326,20 @@ void WFormWidget::updateDom(DomElement& element, bool all)
   }
 
   WInteractWidget::updateDom(element, all);
+
+  if (flags_.test(BIT_VALIDATION_CHANGED)) {
+    if (validationToolTip_.empty())
+      element.setAttribute("title", toolTip().toUTF8());
+    else
+      element.setAttribute("title", validationToolTip_.toUTF8());
+  }
 }
 
 void WFormWidget::propagateRenderOk(bool deep)
 {
   flags_.reset(BIT_ENABLED_CHANGED);
   flags_.reset(BIT_TABINDEX_CHANGED);
+  flags_.reset(BIT_VALIDATION_CHANGED);
 
   WInteractWidget::propagateRenderOk(deep);
 }
@@ -357,8 +365,18 @@ void WFormWidget::setHidden(bool hidden, const WAnimation& animation)
   WInteractWidget::setHidden(hidden, animation);
 }
 
+void WFormWidget::setToolTip(const WString& text, TextFormat textFormat)
+{
+  WInteractWidget::setToolTip(text, textFormat);
+
+  if (validator_ && textFormat == PlainText)
+    setJavaScriptMember("defaultTT", text.jsStringLiteral());
+}
+
 void WFormWidget::setValidator(WValidator *validator)
 {
+  bool firstValidator = !validator_;
+
   if (validator_)
     validator_->removeFormWidget(this);
 
@@ -371,6 +389,10 @@ void WFormWidget::setValidator(WValidator *validator)
 #endif // WT_TARGET_JAVA
 
     validator_->addFormWidget(this);
+
+    if (firstValidator && !toolTip().empty())
+      setToolTip(toolTip());
+
     validatorChanged();
 #ifndef WT_TARGET_JAVA
     if (!validator_->parent())
@@ -391,7 +413,12 @@ WValidator::State WFormWidget::validate()
     WValidator::Result result = validator()->validate(valueText());
 
     toggleStyleClass("Wt-invalid", result.state() != WValidator::Valid, true);
-    setToolTip(result.message());
+
+    if (validationToolTip_ != result.message()) {
+      validationToolTip_ = result.message();
+      flags_.set(BIT_VALIDATION_CHANGED);
+      repaint(RepaintPropertyAttribute);
+    }
 
     validated_.emit(result);
 

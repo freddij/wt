@@ -18,6 +18,9 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include <cassert>
+#include <vector>
+
 namespace {
 #ifdef WT_THREADED
   boost::mutex fontRegistryMutex_;
@@ -31,11 +34,13 @@ namespace Wt {
 
 LOGGER("FontSupportSimple");
 	      
+#ifndef WT_TARGET_JAVA
 FontSupport::Bitmap::Bitmap(int width, int height)
 { }
 
 FontSupport::Bitmap::~Bitmap()
 { }
+#endif
 
 FontSupport::FontMatch::FontMatch()
   : quality_(0.0)
@@ -86,16 +91,18 @@ void FontSupport::setDevice(WPaintDevice *device)
 WFontMetrics FontSupport::fontMetrics(const WFont& font)
 {
   font_ = &font;
-  return device_->fontMetrics();
+  WFontMetrics fm = device_->fontMetrics();
   font_ = 0;
+  return fm;
 }
 
 WTextItem FontSupport::measureText(const WFont& font, const WString& text,
 				   double maxWidth, bool wordWrap)
 {
   font_ = &font;
-  return device_->measureText(text, maxWidth, wordWrap);
+  WTextItem ti = device_->measureText(text, maxWidth, wordWrap);
   font_ = 0;
+  return ti;
 }
 
 void FontSupport::drawText(const WFont& font, const WRectF& rect,
@@ -106,6 +113,7 @@ void FontSupport::drawText(const WFont& font, const WRectF& rect,
   font_ = 0;
 }
 
+#ifndef WT_TARGET_JAVA
 void FontSupport::drawText(const WFont& font, const WRectF& rect,
 			   const WTransform& transform, Bitmap& bitmap,
 			   WFlags<AlignmentFlag> flags,
@@ -113,6 +121,7 @@ void FontSupport::drawText(const WFont& font, const WRectF& rect,
 {
   assert(false);
 }
+#endif
 
 FontSupport::FontMatch FontSupport::matchFont(const WFont& font) const
 {
@@ -145,8 +154,8 @@ FontSupport::FontMatch FontSupport::matchFont(const WFont& font,
   boost::split(fontNames, families, boost::is_any_of(","));
   for (unsigned i = 0; i < fontNames.size(); ++i) {
     std::string s = Utils::lowerCase(fontNames[i]); // UTF-8 !
-    Utils::replace(s, ' ', std::string());
     boost::trim_if(s, boost::is_any_of("\"'"));
+    s = Utils::replace(s, ' ', std::string());
     fontNames[i] = s;
   }
 
@@ -191,7 +200,7 @@ void FontSupport::matchFont(const WFont& font,
   FileUtils::listFiles(path, files);
   
   for (unsigned i = 0; i < files.size(); ++i) {
-    std::string f = files[i];
+    std::string f = Utils::lowerCase(files[i]);
     if (FileUtils::isDirectory(f)) {
       if (recursive) {
 	matchFont(font, fontNames, f, recursive, match);
@@ -213,27 +222,31 @@ void FontSupport::matchFont(const WFont& font,
 {
   if (boost::ends_with(path, ".ttf")
       || boost::ends_with(path, ".ttc")) {
-    std::string name = path.substr(0, path.length() - 4);
+    std::string name = FileUtils::leaf(path);
+    name = name.substr(0, name.length() - 4);
     Utils::replace(name, ' ', std::string());
 
-    char const *const boldVariants[] = { "bold", "bf", 0 };
-    char const *const normalWeightVariants[] = { "", 0 };
+    std::vector<const char*> weightVariants, styleVariants;
 
-    char const *const regularVariants[] = { "regular", "", 0 };
-    char const *const italicVariants[] = { "italic", "oblique", 0 };
-    char const *const obliqueVariants[] = { "oblique", 0 };
-
-    char const *const *weightVariants, *const *styleVariants;
-
-    if (font.weight() == WFont::Bold)
-      weightVariants = boldVariants;
-    else
-      weightVariants = normalWeightVariants;
+    if (font.weight() == WFont::Bold) {
+      weightVariants.push_back("bold");
+      weightVariants.push_back("bf");
+    } else {
+      weightVariants.push_back("");
+    }
 
     switch (font.style()) {
-    case WFont::NormalStyle: styleVariants = regularVariants; break;
-    case WFont::Italic:  styleVariants = italicVariants;  break;
-    case WFont::Oblique: styleVariants = obliqueVariants; break;
+    case WFont::NormalStyle: 
+      styleVariants.push_back("regular");
+      styleVariants.push_back(""); 
+      break;
+    case WFont::Italic:  
+      styleVariants.push_back("italic");
+      styleVariants.push_back("oblique");  
+      break;
+    case WFont::Oblique: 
+      styleVariants.push_back("oblique"); 
+      break;
     }
 
     for (unsigned i = 0; i < fontNames.size(); ++i) {
@@ -241,13 +254,15 @@ void FontSupport::matchFont(const WFont& font,
 
       if (q <= match.quality())
 	return;
-
-      for (char const *const *w = weightVariants; *w; ++w)
-	for (char const *const *s = styleVariants; *s; ++s)
-	  if (fontNames[i] + *w + *s == name) {
+      
+      for (unsigned w = 0; w < weightVariants.size(); ++w)
+	for (unsigned s = 0; s < styleVariants.size(); ++s) {
+	  std::string fn = fontNames[i] + weightVariants[w] + styleVariants[s];
+	  if (fn == name) {
 	    match = FontMatch(path, q);
 	    return;
 	  }
+	}
     }
   }
 }

@@ -13,6 +13,7 @@ WT_DECLARE_WT_MEMBER
 
    var self = this;
    var titlebar = $(el).find(".titlebar").first().get(0);
+   var layoutContainer = $(el).find(".dialog-layout").get(0);
    var WT = APP.WT;
    var dsx, dsy;
 
@@ -74,34 +75,56 @@ WT_DECLARE_WT_MEMBER
 	 el.style.marginTop = '0px';
        }
 
-       if (el.style.height != '')
-	 wtResize(el, -1, h);
-
-       el.style.visibility = 'visible';
+       if (el.style.position != '') {
+	 el.style.visibility = 'visible';
+       }
      }
    };
 
-   function wtResize(self, w, h) {
-     h -= 2; w -= 2; // 2 = dialog border
-     self.style.height = Math.max(0, h) + 'px';
+   function layoutResize(ignored, w, h) {
+     if (el.style.position == '') {
+       el.style.position = WT.isIE6 ? 'absolute' : 'fixed';
+     }
+
+     el.style.visibility = 'visible';
+
+     el.style.height = Math.max(0, h) + 'px';
+     el.style.width = Math.max(0, w) + 'px';
+
+     self.centerDialog();
+   }
+
+   function wtResize(ignored, w, h) {
      if (w > 0)
-       self.style.width = Math.max(0, w) + 'px';
-     var c = $(self).children('.body').get(0);
-     var t = $(self).children('.titlebar').get(0);
-     if (t)
-       h -= t.offsetHeight + 8; // 8 = body padding
-     if (h > 0) {
-       c.style.height = h + 'px';
-       if (APP.layouts)
-	 APP.layouts.adjust();
-     }
+       layoutContainer.style.width = w + 'px';
+     if (h > 0)
+       layoutContainer.style.height = h + 'px';
+
+     self.centerDialog();
    };
+
+   function wtPosition() {
+     APP.layouts2.adjust();
+   }
 
    this.onresize = function(w, h) {
      centerX = centerY = false;
      wtResize(el, w, h);
+
+     var layout = jQuery.data(layoutContainer.firstChild, 'layout');
+     layout.setMaxSize(0, 0);
+
+     APP.layouts2.scheduleAdjust();
    };
 
-   el.wtResize = wtResize;
-   el.wtPosition = this.centerDialog;
+   layoutContainer.wtResize = layoutResize;
+   el.wtPosition = wtPosition;
+
+   if (el.style.width != '')
+     layoutContainer.style.width = el.offsetWidth + 'px';
+
+   if (el.style.height != '')
+     layoutContainer.style.height = el.offsetHeight + 'px';
+
+   self.centerDialog();
  });

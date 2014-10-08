@@ -39,6 +39,11 @@
 #include <magick/api.h>
 #endif
 
+#ifndef WT_HAVE_POSIX_FILEIO
+// boost bug workaround: see WebController constructor
+#include <boost/filesystem.hpp>
+#endif
+
 namespace Wt {
 
 LOGGER("WebController");
@@ -58,12 +63,27 @@ WebController::WebController(WServer& server,
 {
   CgiParser::init();
 
+#ifndef WT_DEBUG_JS
   WObject::seedId(WRandom::get());
+#else
+  WObject::seedId(0);
+#endif
 
   redirectSecret_ = WRandom::generateId(32);
 
 #ifdef HAVE_RASTER_IMAGE
   InitializeMagick(0);
+#endif
+
+#ifndef WT_HAVE_POSIX_FILEIO
+  // attempted workaround for:
+  // https://svn.boost.org/trac/boost/ticket/6320
+  // https://svn.boost.org/trac/boost/ticket/4889
+  // https://svn.boost.org/trac/boost/ticket/6690
+  // https://svn.boost.org/trac/boost/ticket/6737
+  // Invoking the path constructor here should create the global variables
+  // in boost.filesystem before the threads are started.
+  boost::filesystem::path bugFixFilePath("please-initialize-globals");
 #endif
 }
 
@@ -589,7 +609,9 @@ void WebController::handleRequest(WebRequest *request)
 	if (configuration().sessionTracking() == Configuration::CookiesURL)
 	  request->addHeader("Set-Cookie",
 			     appSessionCookie(request->scriptName())
-			     + "=" + sessionId + "; Version=1;");
+			     + "=" + sessionId + "; Version=1;"
+			     + " Path=" + session->env().deploymentPath()
+			     + "; httponly;");
 
 	sessions_[sessionId] = session;
 	++plainHtmlSessions_;

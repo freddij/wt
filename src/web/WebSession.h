@@ -62,6 +62,10 @@ public:
 	     const WebRequest *request, WEnvironment *env = 0);
   ~WebSession();
 
+#ifdef WT_TARGET_JAVA
+  void destruct();
+#endif // WT_TARGET_JAVA
+
   static WebSession *instance();
 
   bool attachThreadToLockedHandler();
@@ -192,6 +196,7 @@ public:
     std::vector<unsigned int> signalOrder;
 
 #ifdef WT_THREADED
+    boost::thread::id lockOwner() const { return lockOwner_; }
     boost::mutex::scoped_lock& lock() { return lock_; }
 #endif
 
@@ -203,6 +208,7 @@ public:
 
 #ifdef WT_THREADED
     boost::mutex::scoped_lock lock_;
+    boost::thread::id lockOwner_;
 
     Handler(const Handler&);
 #endif // WT_THREADED
@@ -230,6 +236,7 @@ public:
   boost::mutex& mutex() { return mutex_; }
 #endif
 
+  void setExpectLoad();
   void setLoaded();
 
   void generateNewSessionId();
@@ -337,10 +344,11 @@ private:
 			       const std::string& se) const;
 
   void init(const WebRequest& request);
-  bool start();
+  bool start(WebResponse *response);
 
   std::string sessionQuery() const;
   void flushBootStyleResponse();
+  void changeInternalPath(const std::string& path, WebResponse *response);
 
   friend class WebSocketMessage;
   friend class WebRenderer;

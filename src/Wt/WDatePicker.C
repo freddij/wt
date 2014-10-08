@@ -42,6 +42,7 @@ WDatePicker::~WDatePicker()
 void WDatePicker::createDefault()
 {
   WImage *icon = new WImage(WApplication::resourcesUrl() + "calendar_edit.png");
+  icon->resize(16, 16);
   icon->setVerticalAlignment(AlignMiddle);
   WLineEdit *lineEdit = new WLineEdit();
 
@@ -65,6 +66,7 @@ void WDatePicker::create(WInteractWidget *displayWidget,
 
   layout_->setInline(true);
   layout_->addWidget(displayWidget);
+  layout_->setAttributeValue("style", "white-space: nowrap");
 
   const char *TEMPLATE =
     "${shadow-x1-x2}"
@@ -75,10 +77,12 @@ void WDatePicker::create(WInteractWidget *displayWidget,
 
   calendar_ = new WCalendar();
   calendar_->activated().connect(popup_, &WWidget::hide);
+  calendar_->activated().connect(this, &WDatePicker::onPopupHidden);
   calendar_->selectionChanged().connect(this, &WDatePicker::setFromCalendar);
 
   WPushButton *closeButton = new WPushButton(tr("Wt.WDatePicker.Close"));
   closeButton->clicked().connect(popup_, &WWidget::hide);
+  closeButton->clicked().connect(this, &WDatePicker::onPopupHidden);
 
   popup_->bindString("shadow-x1-x2", WTemplate::DropShadow_x1_x2);
   popup_->bindWidget("calendar", calendar_);
@@ -105,6 +109,12 @@ void WDatePicker::setPopupVisible(bool visible)
   popup_->setHidden(!visible);
 }
 
+void WDatePicker::onPopupHidden()
+{
+  forEdit_->setFocus();
+  popupClosed();
+}
+
 void WDatePicker::setGlobalPopup(bool global)
 {
   positionJS_.setJavaScript("function() { " 
@@ -118,11 +128,15 @@ void WDatePicker::setGlobalPopup(bool global)
 
 void WDatePicker::setFormat(const WT_USTRING& format)
 {
+  WDate d = this->date();
+
   format_ = format;
 
   WDateValidator *dv = dynamic_cast<WDateValidator *>(forEdit_->validator());
   if (dv)
     dv->setFormat(format);
+
+  setDate(d);
 }
 
 void WDatePicker::setFromCalendar()
@@ -133,6 +147,8 @@ void WDatePicker::setFromCalendar()
     forEdit_->setText(calDate.toString(format_));
     forEdit_->changed().emit();
   }
+
+  changed_.emit();
 }
 
 WDate WDatePicker::date() const
@@ -167,11 +183,6 @@ void WDatePicker::setFromLineEdit()
 
     calendar_->browseTo(d);
   }
-}
-
-Signal<>& WDatePicker::changed()
-{
-  return calendar_->selectionChanged();
 }
 
 void WDatePicker::setEnabled(bool enabled)

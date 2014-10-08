@@ -17,6 +17,8 @@ WT_DECLARE_WT_MEMBER
    var self = this;
    var WT = APP.WT;
 
+   var sizeSet = false;
+
    /** @const */ var EnsureVisible = 0;
    /** @const */ var PositionAtTop = 1;
    /** @const */ var PositionAtBottom = 2;
@@ -107,7 +109,7 @@ WT_DECLARE_WT_MEMBER
          maxDelta = -tmp;
        }
 
-       new WT.SizeHandle(WT, 'h', obj.offsetWidth, el.firstChild.offsetHeight,
+       new WT.SizeHandle(WT, 'h', obj.offsetWidth, el.offsetHeight,
 	                 minDelta, maxDelta, 'Wt-hsh',
 			 function (delta) {
 			   var newWidth = cw + (rtl ? -delta : delta),
@@ -135,10 +137,10 @@ WT_DECLARE_WT_MEMBER
    var adjustScheduled = false;
 
    function doAdjustColumns() {
-     if (!adjustScheduled)
+     if (!adjustScheduled || !sizeSet)
        return;
 
-     if (el.offsetWidth == 0)
+     if (WT.isHidden(el))
        return;
 
      adjustScheduled = false;
@@ -151,9 +153,6 @@ WT_DECLARE_WT_MEMBER
 
      if (rowHeaderCount)
        hc = hc.firstChild; // Wt-tv-rowc
-
-     if (WT.isHidden(el))
-       return;
 
      for (var i=0, length=hc.childNodes.length; i < length; ++i) {
        if (hc.childNodes[i].className) { // IE may have only a text node
@@ -181,13 +180,16 @@ WT_DECLARE_WT_MEMBER
 	   rrow.style.width = allw_1 + 'px';
        }
 
-       if (!c0r.style.width) {  // first resize and c0 width not set
-	 var c0rw = headers.offsetWidth - hc.offsetWidth - 8;
+       if (!c0r.style.width) {
+	 // first resize and c0 width not set
+	 // 9 = 2px (widget border) - 7px column padding
+	 var c0rw = el.scrollWidth - hc.offsetWidth - 9;
 	 if (c0rw > 0)
 	   c0r.style.width = c0rw + 'px';
        } else
 	 $(el).find('.Wt-headerdiv .' + c0id).css('width', c0r.style.width);
      }
+
      /*
       * IE6 is still not entirely right. It seems to be caused by a padding
       * of 7 pixels in the first column which gets added to the width.
@@ -202,6 +204,8 @@ WT_DECLARE_WT_MEMBER
        var r = WT.getCssRule('#' + el.id + ' .Wt-tv-rowc');
        r.style.width = allw_1 + 'px';
 
+       APP.layouts2.adjust();
+
        if (WT.isIE) {
 	 setTimeout(function() {
 	     $(el).find('.Wt-tv-rowc')
@@ -211,10 +215,6 @@ WT_DECLARE_WT_MEMBER
        }
 
        el.changed = true;
-
-       /*
-	* self.autoJavaScript();
-        */
      }
    }
 
@@ -265,15 +265,8 @@ WT_DECLARE_WT_MEMBER
    *    * table parent width
    */
 
-  this.autoJavaScript = function() {
-      if (el.parentNode == null) {
-	el = contentsContainer = headerContainer = contents = headers = null;
-	this.autoJavaScript = function() { };
-	return;
-      }
-
-      if (WT.isHidden(el) || el.offsetWidth == 0)
-	return;
+  this.wtResize = function() {
+      sizeSet = true;
 
       doAdjustColumns();
 
@@ -291,6 +284,10 @@ WT_DECLARE_WT_MEMBER
 
       var scrollwidth = contentsContainer.offsetWidth
         - contentsContainer.clientWidth;
+
+      // IE cannot accurately estimate scrollwidth from time to time ?
+      if (scrollwidth > 50)
+	scrollwidth = 0;
 
       if (contentsContainer.clientWidth > 0)
 	tw -= scrollwidth;
@@ -326,8 +323,11 @@ WT_DECLARE_WT_MEMBER
 	contentsContainer.style.width = (tw + scrollwidth) + 'px';
 
 	// IE moves the scrollbar left in rtl mode.
-	if (!WT.isIE)
+	var rtl = $(document.body).hasClass('Wt-rtl');
+	if (!rtl || !WT.isIElt9) {
 	  headerContainer.style.marginRight = scrollwidth + 'px';
+	  $('#' + el.id + ' .Wt-scroll').css('marginRight', scrollwidth + 'px');
+	}
 
 	if (c0w != null) {
 	  var w = tw - c0w - (WT.isIE6 ? 10 : 7);

@@ -206,10 +206,10 @@ void WBoxLayout::insertItem(int index, WLayoutItem *item, int stretch,
     index = grid_.columns_.size() - index;
   case LeftToRight:
     grid_.columns_.insert(grid_.columns_.begin() + index,
-			  Impl::Grid::Column(stretch));
+			  Impl::Grid::Section(stretch));
     if (grid_.items_.empty()) {
       grid_.items_.push_back(std::vector<Impl::Grid::Item>());
-      grid_.rows_.push_back(Impl::Grid::Row());
+      grid_.rows_.push_back(Impl::Grid::Section());
       grid_.rows_[0].stretch_ = -1; // make height managed
     }
     grid_.items_[0].insert(grid_.items_[0].begin() + index,
@@ -219,11 +219,11 @@ void WBoxLayout::insertItem(int index, WLayoutItem *item, int stretch,
     index = grid_.rows_.size() - index;
   case TopToBottom:
     if (grid_.columns_.empty()) {
-      grid_.columns_.push_back(Impl::Grid::Column());
+      grid_.columns_.push_back(Impl::Grid::Section());
       grid_.columns_[0].stretch_ = -1; // make width managed
     }
     grid_.rows_.insert(grid_.rows_.begin() + index,
-		       Impl::Grid::Row(stretch));
+		       Impl::Grid::Section(stretch));
     grid_.items_.insert(grid_.items_.begin() + index,
 			std::vector<Impl::Grid::Item>());
     grid_.items_[index].push_back(Impl::Grid::Item(item, alignment));
@@ -246,19 +246,24 @@ WWidget *WBoxLayout::createSpacer(const WLength& size)
   return spacer;
 }
 
-void WBoxLayout::setResizable(int index, bool enabled)
+void WBoxLayout::setResizable(int index, bool enabled,
+			      const WLength& initialSize)
 {
   switch (direction_) {
   case RightToLeft:
     index = grid_.columns_.size() - 1 - index;
   case LeftToRight:
     grid_.columns_[index].resizable_ = enabled;
+    grid_.columns_[index].initialSize_ = initialSize;
     break;
   case BottomToTop:
     index = grid_.rows_.size() - 1 - index;
   case TopToBottom:
     grid_.rows_[index].resizable_ = enabled;
+    grid_.rows_[index].initialSize_ = initialSize;
   }
+
+  update(0);
 }
 
 bool WBoxLayout::isResizable(int index) const

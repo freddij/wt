@@ -97,13 +97,16 @@ public:
   dbo::ptr<B> b;
   dbo::ptr<D> dthing;
   dbo::ptr<A> parent;
+  dbo::ptr<C> c;
 
   std::vector<unsigned char> binary;
   Wt::WDate date;
   Wt::WTime time;
   Wt::WDateTime datetime;
   Wt::WString wstring;
+  Wt::WString wstring2;
   std::string string;
+  std::string string2;
   boost::posix_time::ptime ptime;
   boost::posix_time::time_duration pduration;
   bool checked;
@@ -125,7 +128,9 @@ public:
       && time == other.time
       && datetime == other.datetime
       && wstring == other.wstring
+      && wstring2 == other.wstring2
       && string == other.string
+      && string2 == other.string2
       && ptime == other.ptime
       && pduration == pduration
       && i == other.i
@@ -149,7 +154,9 @@ public:
     dbo::field(a, binary, "binary");
     dbo::field(a, datetime, "datetime");
     dbo::field(a, wstring, "wstring");
-    dbo::field(a, string, "string", 50);
+    dbo::field(a, wstring2, "wstring2", 30);
+    dbo::field(a, string, "string");
+    dbo::field(a, string2, "string2", 50);
     dbo::field(a, ptime, "ptime");
     dbo::field(a, pduration, "pduration");
     dbo::field(a, i, "i");
@@ -159,10 +166,11 @@ public:
     dbo::field(a, f, "f");
     dbo::field(a, d, "d");
 
-    dbo::belongsTo(a, b, "b", dbo::OnUpdateCascade | dbo::OnDeleteCascade);
+    dbo::belongsTo(a, b, "b");
+    dbo::belongsTo(a, c);
 
     if (a.session()) {
-      dbo::belongsTo(a, dthing, a.session()->template tableName<D>());
+      dbo::belongsTo(a, dthing);
 
       dbo::belongsTo(a, parent, a.session()->template tableName<A>()
 		     + std::string("_parent"));
@@ -215,6 +223,8 @@ class C {
 public:
   std::string name;
   
+  dbo::weak_ptr<A> aOneToOne;
+
   Bs    bsManyToMany;
   Ds    dsManyToMany;
 
@@ -238,6 +248,7 @@ public:
 		 | dbo::OnDeleteCascade
 		 | dbo::OnUpdateCascade );
     dbo::hasMany(a, dsManyToMany, dbo::ManyToMany, SCHEMA "c_d");
+    dbo::hasOne(a, aOneToOne);
   }
 };
 
@@ -261,7 +272,7 @@ public:
     dbo::id(a, id, "id");
     dbo::field(a, name, "name");
 
-    dbo::hasMany(a, asManyToOne, dbo::ManyToOne, "d");
+    dbo::hasMany(a, asManyToOne, dbo::ManyToOne);
     dbo::hasMany(a, csManyToMany, dbo::ManyToMany, SCHEMA "c_d");
   }
 };
@@ -326,6 +337,8 @@ struct DboFixture
     session_->mapClass<C>(SCHEMA "table_c");
     session_->mapClass<D>(SCHEMA "table_d");
 
+    std::cerr << session_->tableCreationSql() << std::endl;
+
     session_->createTables();
 
     Wt::registerType<Coordinate>();
@@ -356,7 +369,9 @@ BOOST_AUTO_TEST_CASE( dbo_test1 )
   a1.date = Wt::WDate(1976, 6, 14);
   a1.time = Wt::WTime(13, 14, 15, 102);
   a1.wstring = "Hello";
+  a1.wstring2 = "Kitty";
   a1.string = "There";
+  a1.string2 = "Big Owl";
   a1.ptime = boost::posix_time::ptime
     (boost::gregorian::date(2005,boost::gregorian::Jan,1),
      boost::posix_time::time_duration(1,2,3));
@@ -394,6 +409,8 @@ BOOST_AUTO_TEST_CASE( dbo_test1 )
     BOOST_REQUIRE(allAs.size() == 1);
     dbo::ptr<A> a2 = *allAs.begin();
     BOOST_REQUIRE(*a2 == a1);
+
+    a2.modify()->parent = a2;
   }
 
   /* Remove the A, check it is no longer found during the same transaction */
@@ -402,8 +419,11 @@ BOOST_AUTO_TEST_CASE( dbo_test1 )
 
     {
       As allAs = session_->find<A>();
+
       BOOST_REQUIRE(allAs.size() == 1);
       dbo::ptr<A> a2 = *allAs.begin();
+
+      BOOST_REQUIRE(a2->parent == a2);
 
       a2.remove();
     }
@@ -634,22 +654,31 @@ BOOST_AUTO_TEST_CASE( dbo_test4 )
     typedef dbo::ptr_tuple<B, A>::type BA;
     typedef dbo::collection<BA> BAs;
 
-//The query below is extended to 
-//select count(1) from ( select B."id", B."name", A."id", A."date", A."b_id" 
-//from "table_b" B join "table_a" A on A."b_id" = B."id"); 
-//by Dbo when it is used to return the size of the collection.
-//This is not valid SQL by the SQL standard definition,
-//because 2 id fields are mentioned in the select clause.
-//A valid alternative would be:
-//select count(1) from ( select B."id", B."name", A."id" as id2, A."date", 
-//A."b_id" from "table_b" B join "table_a" A on A."b_id" = B."id");
-//Firebird is not able to execute this query.
+    // The query below becomes:
+    //    select count(1) from ( select B."id", B."name", A."id", A."date", A."b_id" 
+    //    from "table_b" B join "table_a" A on A."b_id" = B."id"); 
+    // when it is used to return the size of the collection.
+    // This is not valid SQL by the SQL standard definition,
+    // because 2 id fields are mentioned in the select clause.
+    //
+    // A valid alternative would be:
+    //   select count(1) from ( select B."id", B."name", A."id" as id2, A."date", 
+    //   A."b_id" from "table_b" B join "table_a" A on A."b_id" = B."id");
+    //
+    // Firebird is not able to execute this query.
+
 #ifndef FIREBIRD
-    BAs bas = session_->query<BA>
+    dbo::Query<BA> q = session_->query<BA>
       ("select B, A "
        "from \"table_b\" B join \"table_a\" A on A.\"b_id\" = B.\"id\"")
       .orderBy("A.\"i\"");
 
+    std::vector<dbo::FieldInfo> fields = q.fields();
+    std::vector<dbo::FieldInfo> fields2 = q.fields();
+
+    BOOST_REQUIRE(fields.size() == fields2.size());
+
+    BAs bas = q.resultList();
     BOOST_REQUIRE(bas.size() == 2);
 
     int ii = 0;
@@ -1093,6 +1122,9 @@ BOOST_AUTO_TEST_CASE( dbo_test12 )
 
     BOOST_REQUIRE(Wt::asString(model->data(0, 2)) == "changed");
 
+    BOOST_REQUIRE(model->resultRow(0) == session_->find<C>());
+    BOOST_REQUIRE(model->stableResultRow(0) == session_->find<C>());
+
     {
       dbo::ptr<C> c = session_->find<C>();
       BOOST_REQUIRE(c->name == "changed");
@@ -1231,6 +1263,174 @@ BOOST_AUTO_TEST_CASE( dbo_test15 )
 
       BOOST_REQUIRE(c.size() == 1);
     }
+  }
+}
+
+BOOST_AUTO_TEST_CASE( dbo_test16 )
+{
+  DboFixture f;
+
+  dbo::Session *session = f.session_;
+
+  {
+    dbo::Transaction t(*session);
+
+    A a1;
+    a1.date = Wt::WDate(1976, 6, 14);
+    a1.time = Wt::WTime(13, 14, 15, 102);
+    for (unsigned i = 0; i < 255; ++i)
+      a1.binary.push_back(i);
+    a1.datetime = Wt::WDateTime(Wt::WDate(2009, 10, 1), Wt::WTime(12, 11, 31));
+    a1.wstring = "Hello";
+    a1.string = "There";
+    a1.ptime = boost::posix_time::ptime
+      (boost::gregorian::date(2005,boost::gregorian::Jan,1),
+       boost::posix_time::time_duration(1,2,3));
+    a1.pduration = boost::posix_time::hours(1) + boost::posix_time::seconds(10);
+    a1.i = 42;
+    a1.i64 = 9223372036854775805LL;
+    a1.ll = 6066005651767221LL;
+    a1.checked = true;
+    a1.f = (float)42.42;
+    a1.d = 42.424242;
+
+    dbo::ptr<A> a = session->add(new A());
+
+    t.commit();
+
+    {
+      dbo::Transaction t(*session);
+
+      dbo::Query< dbo::ptr<A> > query = session->find<A>();
+      dbo::QueryModel< dbo::ptr<A> > *model
+	= new dbo::QueryModel< dbo::ptr<A> >();
+      model->setQuery(query);
+      model->addColumn ("date");
+      model->addColumn ("time");
+      model->addColumn ("binary");
+      model->addColumn ("datetime");
+      model->addColumn ("wstring");
+      model->addColumn ("string");
+      model->addColumn ("ptime");
+      model->addColumn ("pduration");
+      model->addColumn ("i");
+      model->addColumn ("i64");
+      model->addColumn ("ll");
+      model->addColumn ("checked");
+      model->addColumn ("f");
+      model->addColumn ("d");
+      
+      Wt::WDate date(1982, 12, 2);
+      Wt::WTime time(14, 15, 16, 103);
+      std::vector<unsigned char> bin;
+      for (unsigned i = 0; i < 255; ++i)
+	bin.push_back(255 - i);
+      Wt::WString ws("Hey");
+      std::string s("Test");
+      boost::posix_time::ptime p_time 
+	(boost::gregorian::date(2010,boost::gregorian::Sep,9),
+	 boost::posix_time::time_duration(3,2,1));
+      boost::posix_time::time_duration p_duration 
+	= boost::posix_time::hours(1) + boost::posix_time::seconds(10);
+      int i = 50;
+      ::int64_t i64 = 8223372036854775805LL;;
+      long long ll = 7066005651767221LL;
+      float f = (float)53.53;
+      double d = 53.5353;
+      bool checked = false;
+      
+      model->setData(0, 0, boost::any(date));
+      model->setData(0, 1, boost::any(time));
+      model->setData(0, 2, boost::any(bin));
+      model->setData(0, 3, boost::any(Wt::WDateTime(date, time)));
+      model->setData(0, 4, boost::any(ws));
+      model->setData(0, 5, boost::any(s));
+      model->setData(0, 6, boost::any(p_time));
+      model->setData(0, 7, boost::any(p_duration));
+      model->setData(0, 8, boost::any(i));
+      model->setData(0, 9, boost::any(i64));
+      model->setData(0, 10, boost::any(ll));
+      model->setData(0, 11, boost::any(checked));
+      model->setData(0, 12, boost::any(f));
+      model->setData(0, 13, boost::any(d));
+
+      //TODO, also set data using strings to test string to any value conversion
+
+      dbo::ptr<A> aa = session->find<A>().resultValue();
+      BOOST_REQUIRE(aa->date == date);
+      BOOST_REQUIRE(aa->time == time);
+      BOOST_REQUIRE(aa->binary == bin);
+      BOOST_REQUIRE(aa->datetime == Wt::WDateTime(date, time));
+      BOOST_REQUIRE(aa->wstring == ws);
+      BOOST_REQUIRE(aa->string == s);
+      BOOST_REQUIRE(aa->ptime == p_time);
+      BOOST_REQUIRE(aa->pduration == p_duration);
+      BOOST_REQUIRE(aa->i == i);
+      BOOST_REQUIRE(aa->i64 == i64);
+      BOOST_REQUIRE(aa->ll == ll);
+      BOOST_REQUIRE(aa->checked == checked);
+      BOOST_REQUIRE(aa->f == f);
+      BOOST_REQUIRE(aa->d == d);
+    }
+  }
+}
+
+#if 0 // doesn't work, no solution yet
+BOOST_AUTO_TEST_CASE( dbo_test17 )
+{
+  DboFixture f;
+
+  dbo::Session *session_ = f.session_;
+
+  {
+    dbo::Transaction t(*session_);
+
+    dbo::ptr<A> a = session_->add(new A());
+    dbo::ptr<B> b = session_->add(new B("b", B::State1));
+    a.modify()->b = b;
+  }
+
+  {
+    dbo::Transaction t(*session_);
+    dbo::ptr<A> a = session_->find<A>();
+
+    dbo::ptr<B> b = a->b;
+    a.modify()->b.reset(); // 1
+    b.remove(); // 2
+    a.remove(); // 3
+  }
+}
+#endif
+
+BOOST_AUTO_TEST_CASE( dbo_test18 )
+{
+  DboFixture f;
+
+  dbo::Session *session_ = f.session_;
+
+  {
+    dbo::Transaction t(*session_);
+
+    dbo::ptr<A> a = session_->add(new A());
+    dbo::ptr<C> c = session_->add(new C());
+
+    BOOST_REQUIRE(!c->aOneToOne);
+
+    a.modify()->c = c;
+
+    BOOST_REQUIRE(c->aOneToOne == a);
+
+    a.modify()->c.reset();
+
+    BOOST_REQUIRE(!c->aOneToOne);
+
+    c.modify()->aOneToOne = a;
+
+    BOOST_REQUIRE(a->c == c);
+
+    BOOST_REQUIRE(c->aOneToOne->c == c);
+
+    dbo::ptr<A> a2 = c->aOneToOne;
   }
 }
 

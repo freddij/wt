@@ -28,10 +28,7 @@ WDataSeries::WDataSeries(int modelColumn, SeriesType type, Axis axis)
     yLabel_(false),
     barWidth_(0.8),
     hidden_(false)
-{ 
-  if (type_ == BarSeries)
-    fillRange_ = ZeroValueFill;
-}
+{ }
 
 void WDataSeries::setBarWidth(const double width) 
 {
@@ -97,8 +94,11 @@ WPen WDataSeries::pen() const
       else
 	return chart_->palette()
 	  ->strokePen(chart_->seriesIndexOf(modelColumn_));
-    else
-      return WPen();
+    else {
+      WPen defaultPen;
+      defaultPen.setCapStyle(SquareCap);
+      return defaultPen;
+    }
 }
 
 void WDataSeries::setBrush(const WBrush& brush)
@@ -142,9 +142,24 @@ void WDataSeries::setFillRange(FillRangeType fillRange)
   set(fillRange_, fillRange);
 }
 
+FillRangeType WDataSeries::fillRange() const
+{
+  if (type_ == BarSeries && fillRange_ == NoFill)
+    return ZeroValueFill;
+  else
+    return fillRange_;
+}
+
 void WDataSeries::setMarker(MarkerType marker)
 {
   set(marker_, marker);
+}
+
+void WDataSeries::setCustomMarker(const WPainterPath& path)
+{
+  set(marker_, CustomMarker);
+
+  customMarker_ = path;
 }
 
 void WDataSeries::setMarkerSize(double size)

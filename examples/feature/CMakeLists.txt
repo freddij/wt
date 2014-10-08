@@ -1,11 +1,13 @@
 SUBDIRS(
   auth1
   broadcast
+  client-ssl-auth 
   dbo
   mediaplayer
   miniwebgl
   multiple_servers
   oauth
+  paypal
   serverpush
   socketnotifier
   suggestionpopup

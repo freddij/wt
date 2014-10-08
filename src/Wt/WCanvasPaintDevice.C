@@ -20,13 +20,13 @@
 #include <sstream>
 #include <boost/lexical_cast.hpp>
 
+namespace {
+  static const double EPSILON=1E-5;
+}
 
 namespace Wt {
 
 namespace {
-
-  static const double EPSILON=1E-5;
-
   WPointF normalizedDegreesToRadians(double angle, double sweep) {
     angle = 360 - angle;
     int i = (int)angle / 360;
@@ -139,9 +139,10 @@ void WCanvasPaintDevice::init()
 {
   currentBrush_ = WBrush();
   currentPen_ = WPen();
+  currentPen_.setCapStyle(FlatCap);
   currentShadow_ = WShadow();
   currentFont_ = WFont();
-  currentTextVAlign_ = currentTextHAlign_ = AlignLength;
+  currentTextVAlign_ = currentTextHAlign_ = AlignSuper;
 
   changeFlags_ = Transform | Pen | Brush | Shadow | Font;
 }
@@ -430,8 +431,11 @@ void WCanvasPaintDevice::drawText(const WRectF& rect,
 	    << WWebWidget::jsStringLiteral(currentPen_.color().cssText(true))
 	    << ";";
 
+      char buf[30];
+
       js_ << "ctx.fillText(" << text.jsStringLiteral()
-	  << ',' << x << ',' << y << ");";
+	  << ',' << Utils::round_str(x, 3, buf) << ',';
+      js_ << Utils::round_str(y, 3, buf) << ");";
 
       if (currentBrush_.color() != currentPen_.color())
 	js_ << "ctx.fillStyle="
@@ -704,13 +708,13 @@ void WCanvasPaintDevice::renderStateChanges()
       renderTransform(js_, currentTransform_);
       pathTranslation_.setX(0);
       pathTranslation_.setY(0);
-
       penChanged = true;
       penColorChanged = true;
       brushChanged = true;
       shadowChanged = true;
       fontChanged = true;
-      currentTextHAlign_ = currentTextVAlign_ = AlignLength;
+      currentTextHAlign_ = currentTextVAlign_ = AlignSuper;
+      init();
     }
   }
 

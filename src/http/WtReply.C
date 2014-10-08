@@ -111,6 +111,9 @@ void WtReply::consumeRequestBody(Buffer::const_iterator begin,
 
 	if (!connection->server()->controller()->requestDataReceived
 	    (httpRequest_, bodyReceived_, request().contentLength)) {
+	  delete httpRequest_;
+	  httpRequest_ = 0;
+
 	  setStatus(request_entity_too_large);
 	  setCloseConnection();
 	  state = Request::Error;
@@ -335,8 +338,13 @@ void WtReply::send(const std::string& text, CallbackFunction callBack,
 	    nextCout_ += (char)(payloadLength);
 	  } else {
 	    nextCout_ += (char)127;
-	    for (unsigned i = 0; i < 8; ++i)
-	      nextCout_ += (char)(payloadLength >> ((7-i) * 8));
+	    const unsigned SizeTLength = sizeof(payloadLength);
+
+	    for (unsigned i = 8; i > SizeTLength; --i)
+	      nextCout_ += (char)0x0;
+
+	    for (unsigned i = 0; i < SizeTLength; ++i)
+	      nextCout_ += (char)(payloadLength >> ((SizeTLength - 1 - i) * 8));
 	  }
 
 	  nextCout_ += text;

@@ -7,9 +7,99 @@
 /* Note: this is at the same time valid JavaScript and C++. */
 
 WT_DECLARE_WT_MEMBER
-(1, JavaScriptObject, "WStackedWidget",
- (function() {
-   function animateChild(child, effects, timing, duration, style) {
+(1, JavaScriptConstructor, "WStackedWidget",
+ function (APP, widget) {
+  jQuery.data(widget, 'obj', this);
+
+  var WT = APP.WT, heightSet = false;
+
+  this.wtResize = function(self, w, h, item) {
+    if (item && item.set[1]) {
+      self.style.height = h + 'px';
+      heightSet = true;
+    } else
+      heightSet = false;
+
+     if (WT.boxSizing(self)) {
+       h -= WT.px(self, 'marginTop');
+       h -= WT.px(self, 'marginBottom');
+       h -= WT.px(self, 'borderTopWidth');
+       h -= WT.px(self, 'borderBottomWidth');
+       h -= WT.px(self, 'paddingTop');
+       h -= WT.px(self, 'paddingBottom');
+
+       w -= WT.px(self, 'marginLeft');
+       w -= WT.px(self, 'marginRight');
+       w -= WT.px(self, 'borderLeftWidth');
+       w -= WT.px(self, 'borderRightWidth');
+       w -= WT.px(self, 'paddingLeft');
+       w -= WT.px(self, 'paddingRight');
+     }
+
+     function marginV(el) {
+       var result = WT.px(el, 'marginTop');
+       result += WT.px(el, 'marginBottom');
+
+       if (!WT.boxSizing(el)) {
+	 result += WT.px(el, 'borderTopWidth');
+	 result += WT.px(el, 'borderBottomWidth');
+	 result += WT.px(el, 'paddingTop');
+	 result += WT.px(el, 'paddingBottom');
+       }
+
+       return result;
+     }
+
+     var j, jl, c;
+     for (j = 0, jl = self.childNodes.length; j < jl; ++j) {
+       c = self.childNodes[j];
+
+       if (c.nodeType == 1) {
+	 if (!WT.isHidden(c)) {
+	   var ch = h - marginV(c);
+
+	   if (ch > 0) {
+	     if (c.wtResize)
+	       c.wtResize(c, w, ch);
+	     else {
+	       var cheight = ch + 'px';
+	       if (c.style.height != cheight)
+		 c.style.height = cheight;
+	     }
+	   }
+	 }
+       }
+     }
+   };
+
+   this.wtGetPs = function(self, child, dir, size) {
+      return size;
+   };
+
+   this.setCurrent = function(child) {
+     var j, jl, c;
+     for (j = 0, jl = widget.childNodes.length; j < jl; ++j) {
+       c = widget.childNodes[j];
+
+       if (c.nodeType == 1) {
+	 if (c != child)
+	   c.style.display = 'none';
+	 else {
+	   c.style.display = '';
+
+	   if (heightSet) {
+	     heightSet = false;
+	     widget.style.height = '';
+	   }
+	 }
+       }
+     }
+   };
+ });
+
+WT_DECLARE_WT_MEMBER
+(2, JavaScriptPrototype, "WStackedWidget.prototype.animateChild",
+ function (child, effects, timing, duration, style) {
      /* const */ var SlideInFromLeft = 0x1;
      /* const */ var SlideInFromRight = 0x2;
      /* const */ var SlideInFromBottom = 0x3;
@@ -33,6 +123,8 @@ WT_DECLARE_WT_MEMBER
 	 if ((prefixes[i] + prop) in elem.style)
 	   return prefixes[i];
        }
+
+       return '';
      }
 
      var timings = [ "ease", "linear", "ease-in", "ease-out", "ease-in-out" ],
@@ -137,10 +229,4 @@ WT_DECLARE_WT_MEMBER
      $(to).addClass(anim + ' in');
 
      $(to).one(animationEventEnd, restore);
-   }
-
-   return {
-     animateChild: animateChild
-   };
- })()
-);
+ });

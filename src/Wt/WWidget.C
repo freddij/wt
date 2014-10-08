@@ -20,6 +20,7 @@
 namespace Wt {
 
 const char *WWidget::WT_RESIZE_JS = "wtResize";
+const char *WWidget::WT_GETPS_JS = "wtGetPS";
 
 WWidget::WWidget(WContainerWidget* parent)
   : WObject(0)
@@ -241,7 +242,7 @@ void WWidget::setOffsets(int pixels, WFlags<Side> sides)
 
 std::string WWidget::jsRef() const
 {
-  return "$('#" + id() + "').get(0)";
+  return WT_CLASS ".$('" + id() + "')";
 }
 
 void WWidget::htmlText(std::ostream& out)
@@ -470,7 +471,7 @@ bool WWidget::hasParent() const
     return WObject::hasParent();
 }
 
-bool WWidget::containsExposed(WWidget *w) const
+bool WWidget::isExposed(WWidget *w)
 {
   if (w == this)
     return true;

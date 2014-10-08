@@ -219,7 +219,9 @@ void WebRenderer::streamRedirectJS(std::ostream& out,
   if (session_.app() && session_.app()->internalPathIsChanged_)
     out << "if (window." << session_.app()->javaScriptClass() << ") "
 	<< session_.app()->javaScriptClass()
-	<< "._p_.setHash('" << session_.app()->internalPath() << "');\n";
+	<< "._p_.setHash("
+	<< WWebWidget::jsStringLiteral(session_.app()->newInternalPath_)
+	<< ");\n";
   out <<
     "if (window.location.replace)"
     " window.location.replace('" << redirect << "');"
@@ -349,17 +351,17 @@ void WebRenderer::serveLinkedCss(WebResponse& response)
 
   if (!app->cssTheme().empty()) {
     response.out() << "@import url(\""
-		   << WApplication::resourcesUrl() << "/themes/"
+		   << WApplication::resourcesUrl() << "themes/"
 		   << app->cssTheme() << "/wt.css\");\n";
 
     if (app->environment().agentIsIE())
       response.out() << "@import url(\""
-		     << WApplication::resourcesUrl() << "/themes/"
+		     << WApplication::resourcesUrl() << "themes/"
 		     << app->cssTheme() << "/wt_ie.css\");\n";
 
     if (app->environment().agent() == WEnvironment::IE6)
       response.out() << "@import url(\""
-		     << WApplication::resourcesUrl() << "/themes/"
+		     << WApplication::resourcesUrl() << "themes/"
 		     << app->cssTheme() << "/wt_ie6.css\");\n";
   }
 
@@ -396,7 +398,7 @@ void WebRenderer::serveBootstrap(WebResponse& response)
     boot.setVar("NOSCRIPT_TEXT", conf.redirectMessage());
   } else {
     boot.setVar("AUTO_REDIRECT",
-		"<noscript><meta http-equiv=\"refresh\" content=\"0;url="
+		"<noscript><meta http-equiv=\"refresh\" content=\"0; url="
 		+ noJsRedirectUrl.str() + "\"></noscript>");
     boot.setVar("NOSCRIPT_TEXT", conf.redirectMessage());
   }
@@ -481,10 +483,17 @@ void WebRenderer::setHeaders(WebResponse& response, const std::string mimeType)
 	   << "; Version=1;";
 
     if (!cookie.expires.isNull()) {
-      std::string d 
-	= cookie.expires.toString(WString::fromUTF8
-				  ("ddd, dd-MMM-yyyy hh:mm:ss 'GMT'")).toUTF8();
-      header << " Expires=" << d << ';';
+#ifndef WT_TARGET_JAVA
+      std::string formatString = "ddd, dd-MMM-yyyy hh:mm:ss 'GMT'";
+#else
+      std::string formatString = "EEE, dd-MMM-yyyy hh:mm:ss 'GMT'";
+#endif
+
+      std::string d
+	= cookie.expires.toString
+	(WString::fromUTF8(formatString), false).toUTF8();
+
+      header << "Expires=" << d << ';';
     }
 
     if (!cookie.domain.empty())
@@ -830,15 +839,7 @@ void WebRenderer::serveMainscript(WebResponse& response)
   const bool innerHtml = !xhtml || session_.env().agentIsGecko();
 
   if (serveSkeletons) {
-    bool haveJQuery = false;
-    for (unsigned i = 0;
-	 i < app->scriptLibraries_.size() - app->scriptLibrariesAdded_;
-	 ++i) {
-      if (app->scriptLibraries_[i].uri.find("jquery-") != std::string::npos) {
-	haveJQuery = true;
-	break;
-      }
-    }
+    bool haveJQuery = app->customJQuery();
 
     if (!haveJQuery) {
       response.out() << "if (typeof window.$ === 'undefined') {";
@@ -939,9 +940,8 @@ void WebRenderer::serveMainscript(WebResponse& response)
   app->autoJavaScriptChanged_ = true;
 
   if (session_.type() == WidgetSet) {
-    response.out() << "$(document).ready(function() { "
-		   << app->javaScriptClass()
-		   << "._p_.update(null, 'load', null, false);});\n";
+    response.out() << app->javaScriptClass()
+		   << "._p_.update(null, 'load', null, false);";
   } else if (!rendered_) {
     serveMainAjax(response);
   } else {
@@ -996,7 +996,9 @@ void WebRenderer::serveMainscript(WebResponse& response)
 
     response.out() 
       << app->javaScriptClass()
-      << "._p_.setHash('" << app->newInternalPath_ << "');\n";
+      << "._p_.setHash("
+      << WWebWidget::jsStringLiteral(app->newInternalPath_)
+      << ");\n";
 
     if (!app->environment().hashInternalPaths())
       session_.setPagePathInfo(app->newInternalPath_);
@@ -1070,15 +1072,15 @@ void WebRenderer::serveMainAjax(WebResponse& response)
   if (widgetset || !session_.bootStyleResponse()) {
     if (!app->cssTheme().empty()) {
       response.out() << WT_CLASS << ".addStyleSheet('"
-		     << WApplication::resourcesUrl() << "/themes/"
+		     << WApplication::resourcesUrl() << "themes/"
 		     << app->cssTheme() << "/wt.css', 'all');";
       if (app->environment().agentIsIE())
 	response.out() << WT_CLASS << ".addStyleSheet('"
-		       << WApplication::resourcesUrl() << "/themes/"
+		       << WApplication::resourcesUrl() << "themes/"
 		       << app->cssTheme() << "/wt_ie.css', 'all');";
       if (app->environment().agent() == WEnvironment::IE6)
 	response.out() << WT_CLASS << ".addStyleSheet('"
-		       << WApplication::resourcesUrl() << "/themes/"
+		       << WApplication::resourcesUrl() << "themes/"
 		       << app->cssTheme() << "/wt_ie6.css', 'all');";
     }
 
@@ -1265,19 +1267,19 @@ void WebRenderer::serveMainpage(WebResponse& response)
 
   if (!app->cssTheme().empty()) {
     styleSheets += "<link href=\""
-      + WApplication::resourcesUrl() + "/themes/" + app->cssTheme()
+      + WApplication::resourcesUrl() + "themes/" + app->cssTheme()
       + "/wt.css\" rel=\"stylesheet\" type=\"text/css\""
       + (xhtml ? "/>" : ">") + "\n";
 
     if (app->environment().agentIsIE())
       styleSheets += "<link href=\""
-	+ WApplication::resourcesUrl() + "/themes/" + app->cssTheme()
+	+ WApplication::resourcesUrl() + "themes/" + app->cssTheme()
 	+ "/wt_ie.css\" rel=\"stylesheet\" type=\"text/css\""
 	+ (xhtml ? "/>" : ">") + "\n";
 
     if (app->environment().agent() == WEnvironment::IE6)
       styleSheets += "<link href=\""
-	+ WApplication::resourcesUrl() + "/themes/" + app->cssTheme()
+	+ WApplication::resourcesUrl() + "themes/" + app->cssTheme()
 	+ "/wt_ie6.css\" rel=\"stylesheet\" type=\"text/css\""
 	+ (xhtml ? "/>" : ">") + "\n";
   }
@@ -1617,7 +1619,9 @@ void WebRenderer::collectJS(std::ostream* js)
 
     if (app->internalPathIsChanged_) {
       *js << app->javaScriptClass()
-	  << "._p_.setHash('" << app->newInternalPath_ << "');\n";
+	  << "._p_.setHash("
+	  << WWebWidget::jsStringLiteral(app->newInternalPath_)
+	  << ");\n";
       if (!preLearning() && !app->environment().hashInternalPaths())
 	session_.setPagePathInfo(app->newInternalPath_);
     }

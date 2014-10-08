@@ -15,7 +15,6 @@
 #include "Wt/WServer"
 
 #include <sstream>
-#include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/algorithm/string.hpp>
@@ -35,7 +34,7 @@ using boost::asio::ip::tcp;
 
 namespace Wt {
 
-LOGGER("Http::Client");
+LOGGER("Http.Client");
 
   namespace Http {
 
@@ -341,6 +340,7 @@ private:
 			    boost::asio::placeholders::error,
 			    boost::asio::placeholders::bytes_transferred));
     } else if (err != boost::asio::error::eof
+	       && err != boost::asio::error::shut_down
 	       && err.value() != 335544539) {
       err_ = err;
       complete();

@@ -235,12 +235,35 @@ WebSession::~WebSession()
 
   flushBootStyleResponse();
 
+  controller_->configuration().registerSessionId(sessionId_, std::string());
+
 #ifndef WT_TARGET_JAVA
   LOG_INFO("session destroyed (#sessions = " << controller_->sessionCount()
 	   << ")");
 #endif // WT_TARGET_JAVA
 
 }
+
+#ifdef WT_TARGET_JAVA
+void WebSession::destruct()
+{
+  if (asyncResponse_) {
+    asyncResponse_->flush();
+    asyncResponse_ = 0;
+  }
+
+  if (deferredResponse_) {
+    deferredResponse_->flush();
+    deferredResponse_ = 0;
+  }    
+
+  mutex_.lock();
+  updatesPendingEvent_.notify_one();
+  mutex_.unlock();
+
+  flushBootStyleResponse();
+}
+#endif // WT_TARGET_JAVA
 
 std::string WebSession::docType() const
 {
@@ -266,7 +289,7 @@ std::string WebSession::docType() const
       "\"-//W3C//DTD HTML 4.01 Transitional//EN\" "
       "\"http://www.w3.org/TR/html4/loose.dtd\">";
 #else
-      "<!doctype html>"; // HTML5 hoeray
+      "<!DOCTYPE html>"; // HTML5 hoeray
 #endif
 }
 
@@ -282,17 +305,27 @@ void WebSession::setLoaded()
   setState(Loaded, controller_->configuration().sessionTimeout());
 }
 
+void WebSession::setExpectLoad()
+{
+  if (controller_->configuration().ajaxPuzzle())
+    setState(ExpectLoad, controller_->configuration().bootstrapTimeout());
+  else
+    setLoaded();
+}
+
 void WebSession::setState(State state, int timeout)
 {
 #ifdef WT_THREADED
   // this assertion is not true for when we are working from an attached
   // thread: that thread does not have an associated handler, but its contract
   // dictates that it should work on behalf of a thread that has the lock.
-  //assert(WebSession::Handler::instance()->lock().owns_lock());
+  //assert(WebSession::Handler::instance()->haveLock());
 #endif // WT_THREADED
 
   if (state_ != Dead) {
     state_ = state;
+
+    LOG_DEBUG("Setting to expire in " << timeout << "s");
 
 #ifndef WT_TARGET_JAVA
     if (controller_->configuration().sessionTimeout() != -1)
@@ -577,10 +610,13 @@ std::string WebSession::appendInternalPath(const std::string& baseUrl,
   }
 }
 
-bool WebSession::start()
+bool WebSession::start(WebResponse *response)
 {
   try {
     app_ = controller_->doCreateApplication(this);
+    if (!app_->internalPathValid_)
+      if (response->responseType() == WebResponse::Page)
+	response->setStatus(404);
   } catch (std::exception& e) {
     app_ = 0;
 
@@ -687,6 +723,7 @@ WebSession::Handler::Handler(boost::shared_ptr<WebSession> session,
 {
   if (takeLock) {
 #ifdef WT_THREADED
+    lockOwner_ = boost::this_thread::get_id();
     lock_.lock();
 #endif
 #ifdef WT_TARGET_JAVA
@@ -708,6 +745,9 @@ WebSession::Handler::Handler(WebSession *session)
     response_(0),
     killed_(false)
 {
+#ifdef WT_THREADED
+  lockOwner_ = boost::this_thread::get_id();
+#endif
 #ifdef WT_TARGET_JAVA
   session->mutex().lock();
 #endif // WT_TARGET_JAVA
@@ -730,6 +770,9 @@ WebSession::Handler::Handler(boost::shared_ptr<WebSession> session,
     response_(&response),
     killed_(false)
 {
+#ifdef WT_THREADED
+  lockOwner_ = boost::this_thread::get_id();
+#endif
 #ifdef WT_TARGET_JAVA
   session->mutex().lock();
 #endif
@@ -751,11 +794,11 @@ bool WebSession::Handler::haveLock() const
 #ifdef WT_THREADED
   return lock_.owns_lock();
 #else
-#  ifdef WT_TARGET_JAVA
+#ifdef WT_TARGET_JAVA
   return session_->mutex().owns_lock();
-#  else
+#else
   return true;
-#  endif
+#endif
 #endif
 }
 
@@ -842,7 +885,7 @@ void WebSession
 #ifdef WT_TARGET_JAVA
 void WebSession::Handler::release()
 {
-  if (session_->mutex().owns_lock()) {
+  if (haveLock()) {
     if (session_->triggerUpdate_)
       session_->pushUpdates();
     session_->mutex().unlock();
@@ -1219,7 +1262,7 @@ void WebSession::handleRequest(Handler& handler)
 	    } catch (std::exception& e) {
 	    }
 
-	    if (!start())
+	    if (!start(handler.response()))
 	      throw WException("Could not start application.");
 
 	    app_->notify(WEvent(WEvent::Impl(&handler)));
@@ -1265,12 +1308,12 @@ void WebSession::handleRequest(Handler& handler)
 	    init(request); // env, url/internalpath, initial query parameters
 	    env_->enableAjax(request);
 
-	    if (!start())
+	    if (!start(handler.response()))
 	      throw WException("Could not start application.");
 
 	    app_->notify(WEvent(WEvent::Impl(&handler)));
 
-	    setState(ExpectLoad, conf.bootstrapTimeout()); // expect 'load'
+	    setExpectLoad();
 	  }
 
 	  break;
@@ -1288,15 +1331,28 @@ void WebSession::handleRequest(Handler& handler)
 	  else if (*requestE == "script") {
 	    handler.response()->setResponseType(WebResponse::Script);
 	    if (state_ == Loaded)
-	      setState(ExpectLoad, conf.bootstrapTimeout()); // expect 'load'
+	      setExpectLoad();
 	  } else if (*requestE == "style") {
 	    flushBootStyleResponse();
 
 	    const std::string *jsE = request.getParameter("js");
 	    bool nojs = jsE && *jsE == "no";
+
+	    // See:
+	    // http://www.blaze.io/mobile/ios5-top10-performance-changes/
+	    // Mozilla/5.0 (iPad; CPU OS 5_1_1 like Mac OS X) 
+	    //  AppleWebKit/534.46 (KHTML, like Gecko)
+	    //  Version/5.1 Mobile/9B206 Safari/7534.48.3
+	    bool ios5 = env_->agentIsMobileWebKit()
+	      && (env_->userAgent().find("OS 5_") != std::string::npos
+		  || env_->userAgent().find("OS 6_") != std::string::npos
+		  || env_->userAgent().find("OS 7_") != std::string::npos
+		  || env_->userAgent().find("OS 8_") != std::string::npos);
+
 	    const bool xhtml = env_->contentType() == WEnvironment::XHTML1;
+
 	    noBootStyleResponse_
-	      = noBootStyleResponse_ || (!app_ && (xhtml || nojs));
+	      = noBootStyleResponse_ || (!app_ && (ios5 || xhtml || nojs));
 
 	    if (nojs || noBootStyleResponse_) {
 	      handler.response()->setContentType("text/css");
@@ -1357,7 +1413,7 @@ void WebSession::handleRequest(Handler& handler)
 	    if (!request.getParameter("skeleton")) {
 	      env_->enableAjax(request);
 
-	      if (!start())
+	      if (!start(handler.response()))
 		throw WException("Could not start application.");
 	    } else {
 	      serveResponse(handler);
@@ -1374,7 +1430,7 @@ void WebSession::handleRequest(Handler& handler)
 	    const std::string *jsE = request.getParameter("js");
 
 	    if (jsE && *jsE == "no") {
-	      if (!start())
+	      if (!start(handler.response()))
 		throw WException("Could not start application.");
 
 	      if (controller_->limitPlainHtmlSessions()) {
@@ -1470,6 +1526,7 @@ void WebSession::flushBootStyleResponse()
   if (bootStyleResponse_) {
     bootStyleResponse_->flush();
     bootStyleResponse_ = 0;
+    noBootStyleResponse_ = true;
   }
 }
 
@@ -1829,11 +1886,11 @@ void WebSession::notify(const WEvent& event)
 	  env_->enableAjax(request);
 	  app_->enableAjax();
 	  if (env_->internalPath().length() > 1)
-	    app_->changedInternalPath(env_->internalPath());
+	    changeInternalPath(env_->internalPath(), handler.response());
 	} else {
 	  const std::string *hashE = request.getParameter("_");
 	  if (hashE)
-	    app_->changedInternalPath(*hashE);
+	    changeInternalPath(*hashE, handler.response());
 	}
       }
 
@@ -1886,10 +1943,6 @@ void WebSession::notify(const WEvent& event)
 	    try {
 	      resource->handle(&request, &response);
 	      handler.setRequest(0, 0);
-#ifdef WT_THREADED
-	      if (!handler.lock().owns_lock())
-		handler.lock().lock();
-#endif // WT_THREADED
 	    } catch (std::exception& e) {
 	      LOG_ERROR("Exception while streaming resource" << e.what());
 	      RETHROW(e);
@@ -2038,12 +2091,14 @@ void WebSession::notify(const WEvent& event)
 
 	  env_->parameters_ = handler.request()->getParameterMap();
 
-	  if (hashE)
-	    app_->changedInternalPath(*hashE);
-	  else if (!request.pathInfo().empty())
-	    app_->changedInternalPath(request.pathInfo());
-	  else
-	    app_->changedInternalPath("");
+	  if (!app_->internalPathIsChanged_) {
+	    if (hashE)
+	      changeInternalPath(*hashE, handler.response());
+	    else if (!request.pathInfo().empty())
+	      changeInternalPath(request.pathInfo(), handler.response());
+	    else
+	      changeInternalPath("", handler.response());
+	  }
 	}
 
 	if (!signalE) {
@@ -2102,6 +2157,14 @@ void WebSession::notify(const WEvent& event)
   }
 }
 
+void WebSession::changeInternalPath(const std::string& path,
+				    WebResponse *response)
+{
+  if (!app_->changedInternalPath(path))
+    if (response->responseType() == WebResponse::Page)
+      response->setStatus(404);
+}
+
 EventType WebSession::getEventType(const WEvent& event) const
 {  
   if (event.impl_.handler == 0) 
@@ -2116,7 +2179,7 @@ EventType WebSession::getEventType(const WEvent& event) const
 
   WebRequest& request = *handler.request();
 
-  if (event.impl_.renderOnly)
+  if (event.impl_.renderOnly || !handler.request())
     return OtherEvent;
 
   const std::string *requestE = request.getParameter("request");
@@ -2385,6 +2448,8 @@ void WebSession::notifySignal(const WEvent& e)
 
     renderer_.setRendered(true);
 
+    LOG_DEBUG("signal: " << *signalE);
+
     if (*signalE == "none" || *signalE == "load") {
       if (*signalE == "load") {
 	if (type() == WidgetSet)
@@ -2410,11 +2475,11 @@ void WebSession::notifySignal(const WEvent& e)
       if (*signalE == "hash") {
 	const std::string *hashE = request.getParameter(se + "_");
 	if (hashE) {
-	  app_->changedInternalPath(*hashE);
+	  changeInternalPath(*hashE, handler.response());
 	  app_->doJavaScript(WT_CLASS ".scrollIntoView("
 			     + WWebWidget::jsStringLiteral(*hashE) + ");");
 	} else
-	  app_->changedInternalPath("");
+	  changeInternalPath("", handler.response());
 
       } else {
 	for (unsigned k = 0; k < 3; ++k) {

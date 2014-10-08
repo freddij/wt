@@ -26,16 +26,14 @@ public:
 
   virtual int minimumHeight() const;
 
+  virtual void update(WLayoutItem *);
   virtual DomElement *createDomElement(bool fitWidth, bool fitHeight,
 				       WApplication *app);
-  virtual void updateDom();
+  virtual void updateDom(DomElement& parent);
 
   static bool useJavaScriptHeights(WApplication *app);
 
   virtual void setHint(const std::string& name, const std::string& value);
-
-  // Does not really belong here, but who cares ?
-  static const char* childrenResizeJS();
 
   virtual bool itemResized(WLayoutItem *item);
 

@@ -12,7 +12,7 @@
 #include "Wt/WLogger"
 #include "Wt/WSuggestionPopup"
 #include "Wt/WStringStream" 
-#include "Wt/WStringListModel"
+#include "Wt/WStandardItemModel"
 #include "Wt/WTemplate"
 #include "Wt/WText"
 
@@ -106,7 +106,7 @@ void WSuggestionPopup::init()
   setAttributeValue("style", "z-index: 10000; display: none");
   setPositionScheme(Absolute);
 
-  setModel(new WStringListModel(this));
+  setModel(new WStandardItemModel(0, 1, this));
 
   filter_.connect(this, &WSuggestionPopup::doFilter);
   jactivated_.connect(this, &WSuggestionPopup::doActivate);
@@ -134,12 +134,13 @@ void WSuggestionPopup::defineJavaScript()
   LOAD_JAVASCRIPT(app, THIS_JS, "WSuggestionPopup", wtjs1);
   LOAD_JAVASCRIPT(app, THIS_JS, "WSuggestionPopupStdMatcher", wtjs2);
 
-  doJavaScript("new " WT_CLASS ".WSuggestionPopup("
-	       + app->javaScriptClass() + "," + jsRef() + ","
-	       + replacerJS_ + "," + matcherJS_ + ","
-	       + boost::lexical_cast<std::string>(filterLength_) + ","
-	       + boost::lexical_cast<std::string>(defaultValue_) + ","
-	       + (global_ ? "true" : "false") + ");");
+  setJavaScriptMember(" WSuggestionPopup",
+		      "new " WT_CLASS ".WSuggestionPopup("
+		      + app->javaScriptClass() + "," + jsRef() + ","
+		      + replacerJS_ + "," + matcherJS_ + ","
+		      + boost::lexical_cast<std::string>(filterLength_) + ","
+		      + boost::lexical_cast<std::string>(defaultValue_) + ","
+		      + (global_ ? "true" : "false") + ");");
 }
 
 void WSuggestionPopup::render(WFlags<RenderFlag> flags)
@@ -236,6 +237,11 @@ void WSuggestionPopup::modelRowsInserted(const WModelIndex& parent,
 
     line->addWidget(value);
     value->setAttributeValue("sug", asString(d2));
+
+    boost::any styleclass = index.data(StyleClassRole);
+    if (!styleclass.empty()) {
+      value->setAttributeValue("class", asString(styleclass));
+    }
   }
 }
 
@@ -350,8 +356,13 @@ void WSuggestionPopup::doFilter(std::string input)
   filterModel_.emit(WT_USTRING::fromUTF8(input));
   filtering_ = false;
 
-  doJavaScript("jQuery.data(" + jsRef() + ", 'obj').filtered("
-	       + WWebWidget::jsStringLiteral(input) + ");");
+  /*
+   * We do not use this->doJavaScript() because that would be rendered
+   * before the updated children (suggestions) are rendered.
+   */
+  WApplication::instance()->
+    doJavaScript("jQuery.data(" + jsRef() + ", 'obj').filtered("
+		 + WWebWidget::jsStringLiteral(input) + ");");
 }
 
 void WSuggestionPopup::doActivate(std::string itemId, std::string editId)

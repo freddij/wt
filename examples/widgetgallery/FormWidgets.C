@@ -3,7 +3,6 @@
  *
  * See the LICENSE file for terms of use.
  */
-
 #include "FormWidgets.h"
 #include "EventDisplayer.h"
 #include "DeferredWidget.h"
@@ -368,6 +367,7 @@ WWidget *FormWidgets::wTextEdit()
 	    "interface. The default, shown below, covers only a small "
 	    "portion of TinyMCE's capabilities.</p>", result);
   WTextEdit *te = new WTextEdit(result);
+  te->setHeight(200);
   ed_->showSignal(te->changed(), "Text edit changed");
 
   return result;
@@ -409,13 +409,23 @@ WWidget *FormWidgets::wPopupMenu()
   subMenu->addItem("Add a chair");
   subMenu->addItem("Add a table");
   popup->addMenu("Add furniture", subMenu);
-  
+
+  popup->aboutToHide().connect(boost::bind(&FormWidgets::popupAction,
+					   this, popup));
+
   WLabel* clickMe = new WLabel("Clicking here will show a popup menu.",
 			       result);
   clickMe->setStyleClass("popupmenuLabel");
   clickMe->clicked().connect(popup, &WPopupMenu::popup);
-  
+ 
   return result;
 }
+
+void FormWidgets::popupAction(WPopupMenu *menu)
+{
+  if (menu->result())
+    ed_->setStatus("PopupMenu '" + menu->result()->text() + "' selected");
+}
+
 #endif
 

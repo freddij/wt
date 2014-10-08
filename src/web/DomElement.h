@@ -19,6 +19,10 @@ namespace Wt {
 
 class WApplication;
 
+/*! \brief Enumeration for a DOM property.
+ *
+ * For internal use only.
+ */
 enum Property { PropertyInnerHTML, PropertyAddedInnerHTML,
 		PropertyValue, PropertyDisabled,
 		PropertyChecked, PropertySelected, PropertySelectedIndex,
@@ -62,17 +66,27 @@ enum Property { PropertyInnerHTML, PropertyAddedInnerHTML,
 		PropertyStyleBackgroundPosition,
 		PropertyStyleTextDecoration, PropertyStyleWhiteSpace,
 		PropertyStyleTableLayout, PropertyStyleBorderSpacing,
+		PropertyStylePageBreakBefore, PropertyStylePageBreakAfter,
 		PropertyStyleZoom,
 		PropertyStyleVisibility, PropertyStyleDisplay,
 
 		/* CSS 3 */
 		PropertyStyleBoxSizing };
 
+/*! \class DomElement web/DomElement web/DomElement
+ *  \brief Class to represent a DOM element.
+ *
+ * This class is for internal use only.
+ */
 class WT_API DomElement
 {
 public:
   enum Mode { ModeCreate, ModeUpdate };
+#ifndef WT_TARGET_JAVA
   typedef std::map<Wt::Property, std::string> PropertyMap;
+#else
+  typedef std::treemap<Wt::Property, std::string> PropertyMap;
+#endif
 
   DomElement(Mode mode, DomElementType type);
   ~DomElement();
@@ -257,12 +271,12 @@ private:
   DomElementType type_;
   std::string  id_;
   int          numManipulations_;
-  std::vector<std::string> methodCalls_;
   int          timeOut_;
   bool         timeOutJSRepeat_;
   EscapeOStream javaScript_;
   std::string  javaScriptEvenWhenDeleted_;
   mutable std::string var_;
+  mutable bool declared_;
 
   AttributeMap    attributes_;
   PropertyMap     properties_;

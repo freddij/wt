@@ -19,7 +19,7 @@ namespace {
 
 namespace Wt {
 
-LOGGER("Auth::AbstractUserDatabase");
+LOGGER("Auth.AbstractUserDatabase");
 
   namespace Auth {
 
@@ -73,6 +73,11 @@ User AbstractUserDatabase::registerNew()
   LOG_ERROR(Require("registerNew()", REGISTRATION).what());
 
   return User();
+}
+
+void AbstractUserDatabase::deleteUser(const User& user)
+{
+  LOG_ERROR(Require("deleteUser()", REGISTRATION).what());
 }
 
 std::string AbstractUserDatabase::email(const User& user) const
@@ -179,14 +184,6 @@ void AbstractUserDatabase::setLastLoginAttempt(const User& user,
 {
   LOG_ERROR(Require("setLastLoginAttempt()", THROTTLING).what());
 }
-
-#ifdef WT_TARGET_JAVA
-User AbstractUserDatabase::addUser(const User& user)
-{
-  LOG_ERROR(Require("registerNew()", REGISTRATION).what());
-  return User();
-}
-#endif
 
   }
 }

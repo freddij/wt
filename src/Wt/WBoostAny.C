@@ -95,7 +95,7 @@ bool matchValue(const boost::any& value, const boost::any& query,
     std::string query_str = asString(query).toUTF8();
     std::string value_str = asString(value).toUTF8();
 
-    switch (f) {
+    switch (static_cast<int>(f)) {
     case MatchStringExactly:
       return boost::iequals(value_str, query_str);
     case MatchStringExactly | (int)MatchCaseSensitive:
@@ -469,6 +469,15 @@ extern WT_API boost::any convertAnyToAny(const boost::any& v,
   } else if (type == typeid(WTime)) {
     return WTime::fromString
       (s, format.empty() ? "HH:mm:ss" : format);
+  } else if (type == typeid(bool)) {
+    std::string b = s.toUTF8();
+    if (b == "true" || b == "1")
+      return true;
+    else if (b == "false" || b == "0")
+      return false;
+    else
+      throw std::runtime_error(std::string("Source string cannot be "
+					   "converted to a bool value!"));
   }
 
 #define ELSE_LEXICAL_ANY(TYPE)						\

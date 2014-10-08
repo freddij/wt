@@ -70,7 +70,8 @@ public:
     DEBUG(std::cerr << this << " bind " << column << " " << value << std::endl);
 
     int err = sqlite3_bind_text(st_, column + 1, value.c_str(),
-				static_cast<int>(value.length()), SQLITE_TRANSIENT);
+				static_cast<int>(value.length()),
+				SQLITE_TRANSIENT);
 
     handleErr(err);
   }
@@ -131,14 +132,19 @@ public:
   virtual void bind(int column, const boost::posix_time::ptime& value,
 		    SqlDateTimeType type)
   {
-    switch (db_.dateTimeStorage(type)) {
-    case Sqlite3::ISO8601AsText: {
+    Sqlite3::DateTimeStorage storageType = db_.dateTimeStorage(type);
+
+    switch (storageType) {
+    case Sqlite3::ISO8601AsText:
+    case Sqlite3::PseudoISO8601AsText: {
       std::string v;
       if (type == SqlDate)
 	v = boost::gregorian::to_iso_extended_string(value.date());
       else {
 	v = boost::posix_time::to_iso_extended_string(value);
-	v[v.find('T')] = ' ';
+
+	if (storageType == Sqlite3::PseudoISO8601AsText)
+	  v[v.find('T')] = ' ';
       }
 
       bind(column, v);
@@ -343,8 +349,11 @@ public:
   virtual bool getResult(int column, boost::posix_time::ptime *value,
 			 SqlDateTimeType type)
   {
-    switch (db_.dateTimeStorage(type)) {
-    case Sqlite3::ISO8601AsText: {
+    Sqlite3::DateTimeStorage storageType = db_.dateTimeStorage(type);
+
+    switch (storageType) {
+    case Sqlite3::ISO8601AsText:
+    case Sqlite3::PseudoISO8601AsText: {
       std::string v;
       if (!getResult(column, &v, -1))
 	return false;
@@ -353,8 +362,16 @@ public:
 	if (type == SqlDate)
 	  *value = boost::posix_time::ptime(boost::gregorian::from_string(v),
 					    boost::posix_time::hours(0));
-	else
+	else {
+	  std::size_t t = v.find('T');
+
+	  if (t != std::string::npos)
+	    v[t] = ' ';
+	  if (v.length() > 0 && v[v.length() - 1] == 'Z')
+	    v.erase(v.length() - 1);
+
 	  *value = boost::posix_time::time_from_string(v);
+	}
       } catch (std::exception& e) {
 	std::cerr << "Sqlite3::getResult(ptime): " << e.what() << std::endl;
 	return false;
@@ -574,14 +591,17 @@ const char *Sqlite3::dateTimeType(SqlDateTimeType type) const
 {
   if (type == SqlTime)
     return "integer";
-  else switch (dateTimeStorage(type)) {
-  case ISO8601AsText:
-    return "text";
-  case JulianDaysAsReal:
-    return "real";
-  case UnixTimeAsInteger:
-    return "integer";
-  }
+  else
+    switch (dateTimeStorage(type)) {
+    case ISO8601AsText:
+    case PseudoISO8601AsText:
+      return "text";
+    case JulianDaysAsReal:
+      return "real";
+    case UnixTimeAsInteger:
+      return "integer";
+    }
+
   std::stringstream ss;
   ss << __FILE__ << ":" << __LINE__ << ": implementation error";
   throw Sqlite3Exception(ss.str());

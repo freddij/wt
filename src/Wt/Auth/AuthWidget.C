@@ -39,7 +39,7 @@ namespace skeletons {
 
 namespace Wt {
 
-LOGGER("Auth::AuthWidget");
+LOGGER("Auth.AuthWidget");
 
   namespace Auth {
 
@@ -365,6 +365,11 @@ void AuthWidget::updatePasswordLoginView()
     }
 
     model_->updateThrottling(login);
+  } else {
+    bindEmpty("lost-password");
+    bindEmpty("sep");
+    bindEmpty("register");
+    bindEmpty("login");
   }
 }
 

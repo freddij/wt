@@ -9,12 +9,14 @@
 
 #include <iostream>
 #include <boost/lexical_cast.hpp>
+#include <boost/date_time/gregorian/greg_year.hpp>
 
 #include <Wt/WAbstractItemModel>
 #include <Wt/WApplication>
 #include <Wt/WCheckBox>
 #include <Wt/WComboBox>
 #include <Wt/WDoubleValidator>
+#include <Wt/WDate>
 #include <Wt/WEnvironment>
 #include <Wt/WIntValidator>
 #include <Wt/WLineEdit>
@@ -23,6 +25,7 @@
 #include <Wt/WStandardItemModel>
 #include <Wt/WTable>
 #include <Wt/WText>
+#include <Wt/WPainterPath>
 
 #include <Wt/Chart/WCartesianChart>
 
@@ -161,7 +164,7 @@ ChartConfig::ChartConfig(WCartesianChart *chart, WContainerWidget *parent)
 
   WPanel *p = list->addWidget("Chart properties", chartConfig);
   p->setMargin(WLength::Auto, Left | Right);
-  p->resize(750, WLength::Auto);
+  p->resize(880, WLength::Auto);
   p->setMargin(20, Top | Bottom);
 
   if (chart_->isLegendEnabled())
@@ -187,6 +190,7 @@ ChartConfig::ChartConfig(WCartesianChart *chart, WContainerWidget *parent)
   addEntry(markers, "Cross");
   addEntry(markers, "X cross");
   addEntry(markers, "Triangle");
+  addEntry(markers, "Diamond");
 
   WStandardItemModel *axes = new WStandardItemModel(0, 1, this);
   addEntry(axes, "1st Y axis");
@@ -274,7 +278,7 @@ ChartConfig::ChartConfig(WCartesianChart *chart, WContainerWidget *parent)
   p = list->addWidget("Series properties", seriesConfig);
   p->expand();
   p->setMargin(WLength::Auto, Left | Right);
-  p->resize(750, WLength::Auto);
+  p->resize(880, WLength::Auto);
   p->setMargin(20, Top | Bottom);
 
   // ---- Axis properties ----
@@ -367,7 +371,7 @@ ChartConfig::ChartConfig(WCartesianChart *chart, WContainerWidget *parent)
 
   p = list->addWidget("Axis properties", axisConfig);
   p->setMargin(WLength::Auto, Left | Right);
-  p->resize(750, WLength::Auto);
+  p->resize(880, WLength::Auto);
   p->setMargin(20, Top | Bottom);
 
   /*
@@ -445,6 +449,17 @@ void ChartConfig::update()
 	sc.markerEdit->setCurrentIndex(0);
       }
 
+      //set WPainterPath to draw a diamond
+      if(sc.markerEdit->currentIndex() == CustomMarker){
+	WPainterPath pp = WPainterPath();
+	pp.moveTo(-6, 0);
+	pp.lineTo(0, 6);
+	pp.lineTo(6, 0);
+	pp.lineTo(0, -6);
+	pp.lineTo(-6, 0);
+	s.setCustomMarker(pp);
+      }
+
       s.setMarker(static_cast<MarkerType>(sc.markerEdit->currentIndex()));
 
       if (sc.axisEdit->currentIndex() == 1) {
@@ -512,15 +527,35 @@ void ChartConfig::update()
       axis.setAutoLimits(MinimumValue | MaximumValue);
     else {
       if (validate(sc.minimumEdit) && validate(sc.maximumEdit)) {
-	double min, max;
-	getDouble(sc.minimumEdit, min);
-	getDouble(sc.maximumEdit, max);
+          double min, max;
+          getDouble(sc.minimumEdit, min);
+          getDouble(sc.maximumEdit, max);
 
-	if (axis.scale() == LogScale)
-	  if (min <= 0)
-	    min = 0.0001;
+          if (axis.scale() == LogScale)
+              if (min <= 0)
+                  min = 0.0001;
 
-	axis.setRange(min, max);
+          if (axis.scale() == DateScale){
+              //the number of julian days until year 1986
+              WDate dMin = WDate(1900,1,1);
+              double gregDaysMin = (double)dMin.toJulianDay();
+              //the number of julian days until year 1988
+              WDate dMax = WDate(3000,1,1);
+              double gregDaysMax = (double)dMax.toJulianDay();
+
+              bool greg_year_validation =
+                      (min > gregDaysMin &&
+                       min < gregDaysMax &&
+                       max > gregDaysMin &&
+                       max < gregDaysMax);
+
+              if(!greg_year_validation){
+                  min = gregDaysMin;
+                  max = gregDaysMax;
+              }
+          }
+
+          axis.setRange(min, max);
       }
 
     }

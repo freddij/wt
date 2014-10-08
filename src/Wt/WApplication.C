@@ -122,6 +122,7 @@ WApplication::WApplication(const WEnvironment& env
 #ifndef WT_DEBUG_JS
     newJavaScriptPreamble_(0),
 #endif // WT_DEBUG_JS
+    customJQuery_(false),
     showLoadingIndicator_("showload", this),
     hideLoadingIndicator_("hideload", this),
     unloaded_(this, "Wt-unload"),
@@ -133,6 +134,8 @@ WApplication::WApplication(const WEnvironment& env
   newInternalPath_ = environment().internalPath();
 
   internalPathIsChanged_ = false;
+  internalPathDefaultValid_ = true;
+  internalPathValid_ = true;
 
 #ifndef WT_TARGET_JAVA
   setLocalizedStrings(new WMessageResourceBundle());
@@ -234,10 +237,12 @@ WApplication::WApplication(const WEnvironment& env
   styleSheet_.addRule(".unselectable",
 		      "-moz-user-select:-moz-none;"
 		      "-khtml-user-select: none;"
+		      "-webkit-user-select: none;"
 		      "user-select: none;");
   styleSheet_.addRule(".selectable",
 		      "-moz-user-select: text;"
 		      "-khtml-user-select: normal;"
+		      "-webkit-user-select: text;"
 		      "user-select: text;");
   styleSheet_.addRule(".Wt-sbspacer", "float: right; width: 16px; height: 1px;"
 		      "border: 0px; display: none;");
@@ -506,7 +511,7 @@ bool WApplication::isExposed(WWidget *w) const
   WWidget *exposedOnly = exposedOnly_.empty() ? 0 : exposedOnly_.back();
 
   if (exposedOnly)
-    return exposedOnly->containsExposed(w);
+    return exposedOnly->isExposed(w);
   else {
     WWidget *p = w->adam();
     return (p == domRoot_ || p == domRoot2_);
@@ -999,6 +1004,7 @@ void WApplication::setCookie(const std::string& name,
   session_->renderer().setCookie(name, value, expires, domain, path, secure);
 }
 
+#ifndef WT_TARGET_JAVA
 void WApplication::setCookie(const std::string& name,
 			     const std::string& value,
 			     const WDateTime& expires,
@@ -1008,6 +1014,7 @@ void WApplication::setCookie(const std::string& name,
 {
   session_->renderer().setCookie(name, value, expires, domain, path, secure);
 }
+#endif // WT_TARGET_JAVA
 
 void WApplication::removeCookie(const std::string& name,
 				const std::string& domain,
@@ -1194,7 +1201,7 @@ std::string WApplication::internalSubPath(const std::string& path) const
 
   if (!pathMatches(current, path)) {
     LOG_WARN("internalPath(): path '"
-	     << path << "' not within current path '" << newInternalPath_
+	     << path << "' not within current path '" << internalPath()
 	     << "'");
     return std::string();
   }
@@ -1204,7 +1211,7 @@ std::string WApplication::internalSubPath(const std::string& path) const
 
 std::string WApplication::internalPath() const
 {
-  return newInternalPath_;
+  return Utils::prepend(newInternalPath_, '/');
 }
 
 void WApplication::setInternalPath(const std::string& path, bool emitChange)
@@ -1219,28 +1226,42 @@ void WApplication::setInternalPath(const std::string& path, bool emitChange)
   else
     newInternalPath_ = path;
 
+  internalPathValid_ = true;
   internalPathIsChanged_ = true;
 }
 
-void WApplication::changeInternalPath(const std::string& aPath)
+void WApplication::setInternalPathValid(bool valid)
+{
+  internalPathValid_ = valid;
+}
+
+void WApplication::setInternalPathDefaultValid(bool valid)
+{
+  internalPathDefaultValid_ = valid;
+}
+
+bool WApplication::changeInternalPath(const std::string& aPath)
 {
   std::string path = Utils::prepend(aPath, '/');
 
-  // internal paths start with a '/'; other anchor changes are not reacted on
-  if (path.empty() || path[0] == '/') {
-    if (path != newInternalPath_) {
-      newInternalPath_ = path;
-      internalPathChanged_.emit(newInternalPath_);
-    }
+  if (path != internalPath()) {
+    newInternalPath_ = path;
+    internalPathValid_ = internalPathDefaultValid_;
+    internalPathChanged_.emit(newInternalPath_);
+
+    if (!internalPathValid_)
+      internalPathInvalid_.emit(newInternalPath_);
   }
+
+  return internalPathValid_;
 }
 
-void WApplication::changedInternalPath(const std::string& path)
+bool WApplication::changedInternalPath(const std::string& path)
 {
   if (!environment().hashInternalPaths())
     session_->setPagePathInfo(path);
 
-  changeInternalPath(path);
+  return changeInternalPath(path);
 }
 
 std::string WApplication::bookmarkUrl() const
@@ -1265,7 +1286,7 @@ WLogEntry WApplication::log(const std::string& type) const
 void WApplication::enableUpdates(bool enabled)
 {
   if (enabled) {
-    if (!WebSession::Handler::instance()->request())
+    if (serverPush_ == 0 && !WebSession::Handler::instance()->request())
       LOG_WARN("WApplication::enableUpdates(true): "
 	       "should be called from within event loop");
     ++serverPush_;
@@ -1546,6 +1567,12 @@ bool WApplication::require(const std::string& uri, const std::string& symbol)
     return false;
 }
 
+bool WApplication::requireJQuery(const std::string& uri)
+{
+  customJQuery_ = true;
+  return require(uri);
+}
+
 #ifndef WT_TARGET_JAVA
 bool WApplication::readConfigurationProperty(const std::string& name,
 					     std::string& value)
@@ -1643,7 +1670,7 @@ void WApplication::streamJavaScriptPreamble(std::ostream& out, bool all)
       = preamble.scope == ApplicationScope ? javaScriptClass() : WT_CLASS;
 
     if (preamble.type == JavaScriptFunction) {
-      out << scope << '.' << preamble.name << " = function() { ("
+      out << scope << '.' << preamble.name << " = function() { return ("
 	  << preamble.src << ").apply(" << scope << ", arguments) };";
     } else {
       out << scope << '.' << preamble.name << " = " << preamble.src
