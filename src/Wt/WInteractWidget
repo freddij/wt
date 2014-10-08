@@ -118,6 +118,44 @@ public:
    * \sa keyPressed(), Key_Escape
    */
   EventSignal<>& escapePressed();
+  /* ksystem start 1 */
+  EventSignal<>& spacebarPressed();
+  EventSignal<>& tabPressed();
+  EventSignal<>& shifttabPressed();
+  EventSignal<>& alt1Pressed();
+  EventSignal<>& alt2Pressed();
+  EventSignal<>& alt3Pressed();
+  EventSignal<>& alt4Pressed();
+  EventSignal<>& alt5Pressed();
+  EventSignal<>& alt6Pressed();
+  EventSignal<>& alt7Pressed();
+  EventSignal<>& alt8Pressed();
+  EventSignal<>& alt9Pressed();
+  EventSignal<>& altaPressed();
+  EventSignal<>& altbPressed();
+  EventSignal<>& altcPressed();
+  EventSignal<>& altdPressed();
+  EventSignal<>& upPressed();
+  EventSignal<>& downPressed();
+  EventSignal<>& f1Pressed();
+  EventSignal<>& f2Pressed();
+  EventSignal<>& f3Pressed();
+  EventSignal<>& f4Pressed();
+  EventSignal<>& f5Pressed();
+  EventSignal<>& f6Pressed();
+  EventSignal<>& f7Pressed();
+  EventSignal<>& f8Pressed();
+  EventSignal<>& f9Pressed();
+  EventSignal<>& f10Pressed();
+  EventSignal<>& f11Pressed();
+  EventSignal<>& f12Pressed();
+  EventSignal<>& plusPressed();
+  EventSignal<>& minusPressed();
+  EventSignal<>& multiplyPressed();
+  EventSignal<>& divisionPressed();
+  EventSignal<>& equalPressed();
+  EventSignal<>& percentPressed();
+  /* ksystem end 1 */
 
   /*! \brief Event signal emitted when a mouse key was clicked on this
    *         widget.
@@ -346,6 +384,46 @@ private:
   static const char *GESTURE_START_SIGNAL;
   static const char *GESTURE_CHANGE_SIGNAL;
   static const char *GESTURE_END_SIGNAL;
+
+  /*ksystem start 2*/
+  static const char *SPACEBAR_PRESS_SIGNAL;
+  static const char *TAB_PRESS_SIGNAL;
+  static const char *SHIFTTAB_PRESS_SIGNAL;
+  static const char *ALT1_PRESS_SIGNAL;
+  static const char *ALT2_PRESS_SIGNAL;
+  static const char *ALT3_PRESS_SIGNAL;
+  static const char *ALT4_PRESS_SIGNAL;
+  static const char *ALT5_PRESS_SIGNAL;
+  static const char *ALT6_PRESS_SIGNAL;
+  static const char *ALT7_PRESS_SIGNAL;
+  static const char *ALT8_PRESS_SIGNAL;
+  static const char *ALT9_PRESS_SIGNAL;
+  static const char *ALTa_PRESS_SIGNAL;
+  static const char *ALTb_PRESS_SIGNAL;
+  static const char *ALTc_PRESS_SIGNAL;
+  static const char *ALTd_PRESS_SIGNAL;
+  static const char *UP_PRESS_SIGNAL;
+  static const char *DOWN_PRESS_SIGNAL;
+  static const char *F1_PRESS_SIGNAL;
+  static const char *F2_PRESS_SIGNAL;
+  static const char *F3_PRESS_SIGNAL;
+  static const char *F4_PRESS_SIGNAL;
+  static const char *F5_PRESS_SIGNAL;
+  static const char *F6_PRESS_SIGNAL;
+  static const char *F7_PRESS_SIGNAL;
+  static const char *F8_PRESS_SIGNAL;
+  static const char *F9_PRESS_SIGNAL;
+  static const char *F10_PRESS_SIGNAL;
+  static const char *F11_PRESS_SIGNAL;
+  static const char *F12_PRESS_SIGNAL;
+  static const char *PLUS_PRESS_SIGNAL;
+  static const char *MINUS_PRESS_SIGNAL;
+  static const char *MULTIPLY_PRESS_SIGNAL;
+  static const char *DIVISION_PRESS_SIGNAL;
+  static const char *EQUAL_PRESS_SIGNAL;
+  static const char *PERCENT_PRESS_SIGNAL;
+  /*ksystem end 2*/
+
 
   friend class DomElement;
   friend class WWebWidget;

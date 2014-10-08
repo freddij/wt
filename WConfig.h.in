@@ -38,5 +38,7 @@
 #cmakedefine WT_NO_STD_WSTRING
 #cmakedefine WT_DEBUG_ENABLED
 
+#define BOOST_SIGNALS_NO_DEPRECATION_WARNING
+
 #endif
 
