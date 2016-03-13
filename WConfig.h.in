@@ -49,7 +49,5 @@
 #define WT_WIN32 1
 #endif
 
-#define BOOST_SIGNALS_NO_DEPRECATION_WARNING
-
 #endif
 

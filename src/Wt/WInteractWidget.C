@@ -46,6 +46,8 @@ const char *WInteractWidget::ALTc_PRESS_SIGNAL = "M_altcpress";
 const char *WInteractWidget::ALTd_PRESS_SIGNAL = "M_altdpress";
 const char *WInteractWidget::UP_PRESS_SIGNAL = "M_uppress";
 const char *WInteractWidget::DOWN_PRESS_SIGNAL = "M_downpress";
+const char *WInteractWidget::PAGEUP_PRESS_SIGNAL = "M_pageuppress";
+const char *WInteractWidget::PAGEDOWN_PRESS_SIGNAL = "M_pagedownpress";
 const char *WInteractWidget::F1_PRESS_SIGNAL = "M_f1press";
 const char *WInteractWidget::F2_PRESS_SIGNAL = "M_f2press";
 const char *WInteractWidget::F3_PRESS_SIGNAL = "M_f3press";
@@ -65,7 +67,6 @@ const char *WInteractWidget::DIVISION_PRESS_SIGNAL = "M_divisionpress";
 const char *WInteractWidget::EQUAL_PRESS_SIGNAL = "M_equalpress";
 const char *WInteractWidget::PERCENT_PRESS_SIGNAL = "M_percentpress";
 /* ksystem end 1*/
-
 const char *WInteractWidget::CLICK_SIGNAL = "click";
 const char *WInteractWidget::M_CLICK_SIGNAL = "M_click";
 const char *WInteractWidget::DBL_CLICK_SIGNAL = "M_dblclick";
@@ -220,6 +221,16 @@ EventSignal<>& WInteractWidget::downPressed()
   return *voidEventSignal(DOWN_PRESS_SIGNAL, true);
 }
 
+EventSignal<>& WInteractWidget::pageUpPressed()
+{
+  return *voidEventSignal(PAGEUP_PRESS_SIGNAL, true);
+}
+
+EventSignal<>& WInteractWidget::pageDownPressed()
+{
+  return *voidEventSignal(PAGEDOWN_PRESS_SIGNAL, true);
+}
+
 EventSignal<>& WInteractWidget::f1Pressed()
 {
   return *voidEventSignal(F1_PRESS_SIGNAL, true);
@@ -318,7 +329,7 @@ EventSignal<WMouseEvent>& WInteractWidget::clicked()
 
 EventSignal<WMouseEvent>& WInteractWidget::doubleClicked()
 {
-  	return *mouseEventSignal(DBL_CLICK_SIGNAL, true);
+  return *mouseEventSignal(DBL_CLICK_SIGNAL, true);
 }
 
 EventSignal<WMouseEvent>& WInteractWidget::mouseWentDown()
@@ -389,7 +400,6 @@ EventSignal<WGestureEvent>& WInteractWidget::gestureEnded()
 void WInteractWidget::updateDom(DomElement& element, bool all)
 {
   bool updateKeyDown = false;
-  int flags=0;
 
   WApplication *app = WApplication::instance();
 
@@ -417,6 +427,8 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
   EventSignal<> *altdPress = voidEventSignal(ALTd_PRESS_SIGNAL, false);
   EventSignal<> *upPress = voidEventSignal(UP_PRESS_SIGNAL, false);
   EventSignal<> *downPress = voidEventSignal(DOWN_PRESS_SIGNAL, false);
+  EventSignal<> *pageUpPress = voidEventSignal(PAGEUP_PRESS_SIGNAL, false);
+  EventSignal<> *pageDownPress = voidEventSignal(PAGEDOWN_PRESS_SIGNAL, false);
   EventSignal<> *f1Press = voidEventSignal(F1_PRESS_SIGNAL, false);
   EventSignal<> *f2Press = voidEventSignal(F2_PRESS_SIGNAL, false);
   EventSignal<> *f3Press = voidEventSignal(F3_PRESS_SIGNAL, false);
@@ -436,7 +448,6 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
   EventSignal<> *equalPress = voidEventSignal(EQUAL_PRESS_SIGNAL, false);
   EventSignal<> *percentPress = voidEventSignal(PERCENT_PRESS_SIGNAL, false);
   /* ksystem end 3 */
-
   EventSignal<WKeyEvent> *keyDown = keyEventSignal(KEYDOWN_SIGNAL, false);
 
   updateKeyDown = (enterPress && enterPress->needsUpdate(all))
@@ -460,6 +471,8 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     || (altdPress && altdPress->needsUpdate(all))
     || (upPress && upPress->needsUpdate(all))
     || (downPress && downPress->needsUpdate(all))
+    || (pageUpPress && pageUpPress->needsUpdate(all))
+    || (pageDownPress && pageDownPress->needsUpdate(all))
     || (f1Press && f1Press->needsUpdate(all))
     || (f2Press && f2Press->needsUpdate(all))
     || (f3Press && f3Press->needsUpdate(all))
@@ -521,7 +534,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
 
     /* ksystem start 5 */
     if (spacebarPress) {
-      if (spacebarPress->isConnected()) {
+      if (spacebarPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 32)",
 				   spacebarPress->javaScript(),
@@ -532,7 +545,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (tabPress) {
-      if (tabPress->isConnected()) {
+      if (tabPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(!e.shiftKey && e.keyCode && e.keyCode == 9)",
 				   tabPress->javaScript(),
@@ -543,7 +556,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (shifttabPress) {
-      if (shifttabPress->isConnected()) {
+      if (shifttabPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.shiftKey && e.keyCode && e.keyCode == 9)",
 				   shifttabPress->javaScript(),
@@ -554,7 +567,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt1Press) {
-      if (alt1Press->isConnected()) {
+      if (alt1Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 49)",
 				   alt1Press->javaScript(),
@@ -565,7 +578,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt2Press) {
-      if (alt2Press->isConnected()) {
+      if (alt2Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 50)",
 				   alt2Press->javaScript(),
@@ -576,7 +589,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt3Press) {
-      if (alt3Press->isConnected()) {
+      if (alt3Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 51)",
 				   alt3Press->javaScript(),
@@ -587,7 +600,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt4Press) {
-      if (alt4Press->isConnected()) {
+      if (alt4Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 52)",
 				   alt4Press->javaScript(),
@@ -598,7 +611,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt5Press) {
-      if (alt5Press->isConnected()) {
+      if (alt5Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 53)",
 				   alt5Press->javaScript(),
@@ -609,7 +622,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt6Press) {
-      if (alt6Press->isConnected()) {
+      if (alt6Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 54)",
 				   alt6Press->javaScript(),
@@ -620,7 +633,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt7Press) {
-      if (alt7Press->isConnected()) {
+      if (alt7Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 55)",
 				   alt7Press->javaScript(),
@@ -631,7 +644,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt8Press) {
-      if (alt8Press->isConnected()) {
+      if (alt8Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 56)",
 				   alt8Press->javaScript(),
@@ -642,7 +655,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (alt9Press) {
-      if (alt9Press->isConnected()) {
+      if (alt9Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 57)",
 				   alt9Press->javaScript(),
@@ -653,7 +666,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (altaPress) {
-      if (altaPress->isConnected()) {
+      if (altaPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 65)",
 				   altaPress->javaScript(),
@@ -664,7 +677,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (altbPress) {
-      if (altbPress->isConnected()) {
+      if (altbPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 66)",
 				   altbPress->javaScript(),
@@ -675,7 +688,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (altcPress) {
-      if (altcPress->isConnected()) {
+      if (altcPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 67)",
 				   altcPress->javaScript(),
@@ -686,7 +699,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (altdPress) {
-      if (altdPress->isConnected()) {
+      if (altdPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.altKey && e.keyCode && e.keyCode == 68)",
 				   altdPress->javaScript(),
@@ -697,7 +710,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (upPress) {
-      if (upPress->isConnected()) {
+      if (upPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 38)",
 				   upPress->javaScript(),
@@ -708,7 +721,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (downPress) {
-      if (downPress->isConnected()) {
+      if (downPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 40)",
 				   downPress->javaScript(),
@@ -718,8 +731,30 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       downPress->updateOk();
     }
 
+    if (pageUpPress) {
+      if (pageUpPress->needsUpdate(all)) {
+	actions.push_back
+	  (DomElement::EventAction("(e.keyCode && e.keyCode == 33)", /* javascript keycode */
+				   pageUpPress->javaScript(),
+				   pageUpPress->encodeCmd(),
+				   pageUpPress->isExposedSignal()));
+      }
+      pageUpPress->updateOk();
+    }
+
+    if (pageDownPress) {
+      if (pageDownPress->needsUpdate(all)) {
+	actions.push_back
+	  (DomElement::EventAction("(e.keyCode && e.keyCode == 34)",
+				   pageDownPress->javaScript(),
+				   pageDownPress->encodeCmd(),
+				   pageDownPress->isExposedSignal()));
+      }
+      pageDownPress->updateOk();
+    }
+
     if (f1Press) {
-      if (f1Press->isConnected()) {
+      if (f1Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 112)",
 				   f1Press->javaScript(),
@@ -730,7 +765,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f2Press) {
-      if (f2Press->isConnected()) {
+      if (f2Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 113)",
 				   f2Press->javaScript(),
@@ -741,7 +776,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f3Press) {
-      if (f3Press->isConnected()) {
+      if (f3Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 114)",
 				   f3Press->javaScript(),
@@ -752,7 +787,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f4Press) {
-      if (f4Press->isConnected()) {
+      if (f4Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 115)",
 				   f4Press->javaScript(),
@@ -763,7 +798,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f5Press) {
-      if (f5Press->isConnected()) {
+      if (f5Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 116)",
 				   f5Press->javaScript(),
@@ -774,7 +809,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f6Press) {
-      if (f6Press->isConnected()) {
+      if (f6Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 117)",
 				   f6Press->javaScript(),
@@ -785,7 +820,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f7Press) {
-      if (f7Press->isConnected()) {
+      if (f7Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 118)",
 				   f7Press->javaScript(),
@@ -796,7 +831,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f8Press) {
-      if (f8Press->isConnected()) {
+      if (f8Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 119)",
 				   f8Press->javaScript(),
@@ -807,7 +842,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f9Press) {
-      if (f9Press->isConnected()) {
+      if (f9Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 120)",
 				   f9Press->javaScript(),
@@ -818,7 +853,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f10Press) {
-      if (f10Press->isConnected()) {
+      if (f10Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 121)",
 				   f10Press->javaScript(),
@@ -829,7 +864,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f11Press) {
-      if (f11Press->isConnected()) {
+      if (f11Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 122)",
 				   f11Press->javaScript(),
@@ -840,7 +875,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     }
 
     if (f12Press) {
-      if (f12Press->isConnected()) {
+      if (f12Press->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 123)",
 				   f12Press->javaScript(),
@@ -850,7 +885,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       f12Press->updateOk();
     }
     if (plusPress) {
-      if (plusPress->isConnected()) {
+      if (plusPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.shiftKey && e.keyCode == 187)", /* keyCode html */
 				   plusPress->javaScript(),
@@ -860,7 +895,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       plusPress->updateOk();
     }
     if (minusPress) {
-      if (minusPress->isConnected()) {
+      if (minusPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 189)", 
 				   minusPress->javaScript(),
@@ -870,7 +905,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       minusPress->updateOk();
     }
     if (multiplyPress) {
-      if (multiplyPress->isConnected()) {
+      if (multiplyPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.shiftKey && e.keyCode == 56)", 
 				   multiplyPress->javaScript(),
@@ -880,7 +915,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       multiplyPress->updateOk();
     }
     if (divisionPress) {
-      if (divisionPress->isConnected()) {
+      if (divisionPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.keyCode == 191)",
 				   divisionPress->javaScript(),
@@ -890,7 +925,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       divisionPress->updateOk();
     }
     if (equalPress) {
-      if (equalPress->isConnected()) {
+      if (equalPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && !e.shiftKey && e.keyCode == 187)", 
 				   equalPress->javaScript(),
@@ -900,7 +935,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       equalPress->updateOk();
     }
     if (percentPress) {
-      if (percentPress->isConnected()) {
+      if (percentPress->needsUpdate(all)) {
 	actions.push_back
 	  (DomElement::EventAction("(e.keyCode && e.shiftKey && e.keyCode == 53)", 
 				   percentPress->javaScript(),
@@ -910,6 +945,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       percentPress->updateOk();
     }
     /* ksystem end 5 */
+
     if (keyDown) {
       if (keyDown->needsUpdate(true)) {
 	actions.push_back

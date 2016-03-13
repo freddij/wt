@@ -137,6 +137,8 @@ public:
   EventSignal<>& altdPressed();
   EventSignal<>& upPressed();
   EventSignal<>& downPressed();
+  EventSignal<>& pageUpPressed();
+  EventSignal<>& pageDownPressed();
   EventSignal<>& f1Pressed();
   EventSignal<>& f2Pressed();
   EventSignal<>& f3Pressed();
@@ -426,6 +428,8 @@ private:
   static const char *ALTd_PRESS_SIGNAL;
   static const char *UP_PRESS_SIGNAL;
   static const char *DOWN_PRESS_SIGNAL;
+  static const char *PAGEUP_PRESS_SIGNAL;
+  static const char *PAGEDOWN_PRESS_SIGNAL;
   static const char *F1_PRESS_SIGNAL;
   static const char *F2_PRESS_SIGNAL;
   static const char *F3_PRESS_SIGNAL;
