@@ -104,7 +104,9 @@ Server::Server(WServer& wt, int argc, char *argv[])
    */
   Configuration& conf = wt_.configuration();
 
-  wt_.ioService().setThreadCount(std::max(conf.maxNumSessions(), conf.numThreads()));
+  int fcgiThreads = conf.fcgiThreads();
+  if (fcgiThreads == 0) fcgiThreads = std::max(conf.maxNumSessions(), conf.numThreads());
+  wt_.ioService().setThreadCount(fcgiThreads);
   LOG_INFO_S(&wt_, "initializing " << wt_.ioService().threadCount() << " threads");
 
   if (conf.sessionPolicy() == Configuration::SharedProcess)
