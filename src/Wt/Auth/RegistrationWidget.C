@@ -34,6 +34,8 @@ RegistrationWidget::RegistrationWidget(AuthWidget *authWidget)
     created_(false),
     confirmPasswordLogin_(0)
 {
+  setWidgetIdMode(SetWidgetObjectName);
+
   WApplication *app = WApplication::instance();
   app->theme()->apply(this, this, AuthWidgets);
 }
@@ -57,7 +59,7 @@ void RegistrationWidget::render(WFlags<RenderFlag> flags)
   WTemplateFormView::render(flags);
 }
 
-WFormWidget *RegistrationWidget::createFormWidget(WFormModel::Field field)
+WWidget *RegistrationWidget::createFormWidget(WFormModel::Field field)
 {
   WFormWidget *result = 0;
 
@@ -231,7 +233,15 @@ void RegistrationWidget::doRegister()
     User user = model_->doRegister();
     if (user.isValid()) {
       registerUserDetails(user);
-      model_->login().login(user);
+      if (!model_->baseAuth()->emailVerificationRequired())
+	model_->loginUser(model_->login(), user);
+      else {
+	if (authWidget_)
+	  authWidget_->displayInfo
+	    (WString::tr("Wt.Auth.confirm-email-first"));
+
+	close();
+      }
     } else
       update();
   } else

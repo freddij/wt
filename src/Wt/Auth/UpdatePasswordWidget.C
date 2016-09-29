@@ -32,6 +32,8 @@ UpdatePasswordWidget::UpdatePasswordWidget(const User& user,
 
   if (user.password().empty())
     authModel_ = 0;
+  else if (authModel_)
+    authModel_->reset();
 
   if (authModel_ && authModel_->baseAuth()->emailVerificationEnabled()) {
     /*
@@ -59,7 +61,7 @@ UpdatePasswordWidget::UpdatePasswordWidget(const User& user,
     authModel_->configureThrottling(okButton);
 
     WLineEdit *password = resolve<WLineEdit *>(AuthModel::PasswordField);
-    password->setFocus();
+    password->setFocus(true);
   }
 
   updateView(registrationModel_);
@@ -75,7 +77,7 @@ UpdatePasswordWidget::UpdatePasswordWidget(const User& user,
 					       password2, password2Info);
 
   if (!authModel_)
-    password->setFocus();
+    password->setFocus(true);
 
   okButton->clicked().connect(this, &UpdatePasswordWidget::doUpdate);
   cancelButton->clicked().connect(this, &UpdatePasswordWidget::close);
@@ -85,7 +87,7 @@ UpdatePasswordWidget::UpdatePasswordWidget(const User& user,
 
 }
 
-WFormWidget *UpdatePasswordWidget::createFormWidget(WFormModel::Field field)
+WWidget *UpdatePasswordWidget::createFormWidget(WFormModel::Field field)
 {
   WFormWidget *result = 0;
 

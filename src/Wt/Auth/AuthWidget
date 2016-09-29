@@ -245,7 +245,7 @@ public:
 
   /*! \brief Creates a password prompt dialog.
    *
-   * This creates a dialog which prompts the user for his
+   * This creates a dialog 
    * password. The user is taken from the \p login object, which also
    * signals an eventual success using its Login::changed() signal.
    *
@@ -255,7 +255,16 @@ public:
 
   void attemptPasswordLogin();
 
+  /*! \brief Displays the error message.
+   *
+   * This method display an dialog showing the error
+   */
   virtual void displayError(const WString& error);
+  
+  /*! \brief Displays the info message.
+   *
+   * This method display an dialog showing the info
+   */
   virtual void displayInfo(const WString& message);
 
 protected:
@@ -321,15 +330,26 @@ protected:
    */
   virtual WDialog *showDialog(const WString& title, WWidget *contents);
 
+  /*! \brief Returns the registration model.
+   *
+   * Calls createRegistrationModel() or resets a previously created one.
+   *
+   * \sa registerNewUser()
+   */
+  RegistrationModel *registrationModel();
+
   /*! \brief Creates a registration model.
    *
-   * This method creates a registration model.
+   * This method creates a registration model. The default
+   * implementation creates a RegistrationModel() but you may want to
+   * reimplement this function to return a specialized registration
+   * model (complementing a specialized registration view).
    *
    * \sa registerNewUser()
    */
   virtual RegistrationModel *createRegistrationModel();
 
-  virtual WFormWidget *createFormWidget(AuthModel::Field field);
+  virtual WWidget *createFormWidget(AuthModel::Field field);
 
   virtual void render(WFlags<RenderFlag> flags);
 

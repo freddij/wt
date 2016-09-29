@@ -55,7 +55,7 @@ public:
    * This updates the user-interface to reflect the current state of the
    * model.
    */
-  void update();
+  virtual void update();
 
 protected:
   /*! \brief Validates the current information.
@@ -97,7 +97,7 @@ protected:
   virtual void render(WFlags<RenderFlag> flags);
 
 protected:
-  virtual WFormWidget *createFormWidget(RegistrationModel::Field field);
+  virtual WWidget *createFormWidget(RegistrationModel::Field field);
 
 private:
   AuthWidget *authWidget_;

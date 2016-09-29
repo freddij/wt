@@ -143,7 +143,6 @@ bool AuthModel::validateField(Field field)
 	return false;
       case PasswordValid:
 	setValid(PasswordField);
-
 	return true;
       }
 
@@ -168,27 +167,36 @@ bool AuthModel::validate()
   return result;
 }
 
+void AuthModel::setRememberMeCookie(const User& user)
+{
+  WApplication *app = WApplication::instance();
+  const AuthService *s = baseAuth();
+
+  app->setCookie(s->authTokenCookieName(),
+		 s->createAuthToken(user),
+		 s->authTokenValidity() * 60,
+		 s->authTokenCookieDomain(),
+		 "",
+		 app->environment().urlScheme() == "https");
+}
+
 bool AuthModel::login(Login& login)
 {
   if (valid()) {
     User user = users().findWithIdentity(Identity::LoginName,
 					 valueText(LoginNameField));
-    if (user.isValid()) {
-      boost::any v = value(RememberMeField);
-      if (!v.empty() && boost::any_cast<bool>(v) == true) {
-	WApplication *app = WApplication::instance();
-	app->setCookie(baseAuth()->authTokenCookieName(),
-		       baseAuth()->createAuthToken(user),
-		       baseAuth()->authTokenValidity() * 60);
-      }
+    boost::any v = value(RememberMeField);
+    if (loginUser(login, user)) {
+      reset();
 
-      login.login(user);
+      if (!v.empty() && boost::any_cast<bool>(v) == true)
+	setRememberMeCookie(user);
 
       return true;
-    }
-  }
-
-  return false;
+    } else
+      return false;
+  } else
+    return false;
 }
 
 void AuthModel::logout(Login& login)
@@ -231,11 +239,11 @@ User AuthModel::processAuthToken()
 	 * Only extend the validity from what we had currently.
 	 */
 	app->setCookie(baseAuth()->authTokenCookieName(), result.newToken(),
-		       result.newTokenValidity());
+		       result.newTokenValidity(), "", "", app->environment().urlScheme() == "https");
 
 	return result.user();
       case AuthTokenResult::Invalid:
-	app->setCookie(baseAuth()->authTokenCookieName(),std::string(), 0);
+	app->setCookie(baseAuth()->authTokenCookieName(),std::string(), 0, "", "", app->environment().urlScheme() == "https");
 
 	return User();
       }

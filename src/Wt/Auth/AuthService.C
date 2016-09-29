@@ -151,6 +151,15 @@ AuthService::~AuthService()
 void AuthService::setEmailVerificationEnabled(bool enabled)
 {
   emailVerification_ = enabled;
+  if (!enabled)
+    emailVerificationReq_ = false;
+}
+
+void AuthService::setEmailVerificationRequired(bool enabled)
+{
+  emailVerificationReq_ = enabled;
+  if (enabled)
+    emailVerification_ = true;
 }
 
 void AuthService::setEmailRedirectInternalPath(const std::string& internalPath)
@@ -163,10 +172,12 @@ void AuthService::setIdentityPolicy(IdentityPolicy identityPolicy)
   identityPolicy_ = identityPolicy;
 }
 
-void AuthService::setAuthTokensEnabled(bool enabled, const std::string& cookieName)
+void AuthService::setAuthTokensEnabled(bool enabled, const std::string& cookieName,
+				       const std::string& cookieDomain)
 {
   authTokens_ = enabled;
   authTokenCookieName_ = cookieName;
+  authTokenCookieDomain_ = cookieDomain;
 }
 
 User AuthService::identifyUser(const Identity& identity,

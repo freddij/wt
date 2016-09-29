@@ -25,6 +25,7 @@ PasswordPromptDialog::PasswordPromptDialog(Login& login, AuthModel *model)
 {
   impl_ = new WTemplateFormView(tr("Wt.Auth.template.password-prompt"));
 
+  model_->reset();
   model_->setValue(AuthModel::LoginNameField,
 		   login_.user().identity(Identity::LoginName));
   model_->setReadOnly(AuthModel::LoginNameField, true);
@@ -35,7 +36,7 @@ PasswordPromptDialog::PasswordPromptDialog(Login& login, AuthModel *model)
 
   WLineEdit *passwordEdit = new WLineEdit();
   passwordEdit->setEchoMode(WLineEdit::Password);
-  passwordEdit->setFocus();
+  passwordEdit->setFocus(true);
   impl_->bindWidget(AuthModel::PasswordField, passwordEdit);
   impl_->updateViewField(model_, AuthModel::PasswordField);
 
@@ -57,8 +58,8 @@ PasswordPromptDialog::PasswordPromptDialog(Login& login, AuthModel *model)
      * try to center it better, we need to set the half width and
      * height as negative margins.
      */
-     setMargin("-21em", Left); // .Wt-form width
-     setMargin("-200px", Top); // ???
+     setMargin(WLength("-21em"), Left); // .Wt-form width
+     setMargin(WLength("-200px"), Top); // ???
   }
 }
 
