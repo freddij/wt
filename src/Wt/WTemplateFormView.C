@@ -45,7 +45,10 @@ void WTemplateFormView::init()
 void WTemplateFormView::setFormWidget(WFormModel::Field field,
 				      Wt::WWidget *formWidget)
 {
-  fields_[field] = FieldData();
+  FieldMap::iterator i = fields_.find(field);
+  if (i == fields_.end())
+    fields_[field] = FieldData();
+
   fields_[field].formWidget = formWidget;
   bindWidget(field, formWidget);
 }
@@ -70,7 +73,10 @@ void WTemplateFormView
 ::setFormWidget(WFormModel::Field field, WWidget *formWidget,
 		FieldView *fieldView)
 {
-  fields_[field] = FieldData();
+  FieldMap::iterator i = fields_.find(field);
+  if (i == fields_.end())
+    fields_[field] = FieldData();
+
   fields_[field].formWidget = formWidget;
   fields_[field].updateFunctions = fieldView;
 
