@@ -200,6 +200,7 @@ void Configuration::reset()
   sessionPolicy_ = SharedProcess;
   numProcesses_ = 1;
   numThreads_ = 10;
+  fcgiThreads_ = 0;
   maxNumSessions_ = 100;
   maxRequestSize_ = 128 * 1024;
   isapiMaxMemoryRequestSize_ = 128 * 1024;
@@ -260,6 +261,12 @@ int Configuration::numThreads() const
 {
   READ_LOCK;
   return numThreads_;
+}
+
+int Configuration::fcgiThreads() const
+{
+  READ_LOCK;
+  return fcgiThreads_;
 }
 
 int Configuration::maxNumSessions() const
@@ -669,6 +676,7 @@ void Configuration::readApplicationSettings(xml_node<> *app)
 					  valgrindPath_);
   runDirectory_ = singleChildElementValue(fcgi, "run-directory",
 					  runDirectory_);
+  setInt(fcgi, "server-threads", fcgiThreads_);
 
   setInt(fcgi, "num-threads", numThreads_); // backward compatibility < 3.2.0
 

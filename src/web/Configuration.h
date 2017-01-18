@@ -127,6 +127,7 @@ public:
   SessionPolicy sessionPolicy() const;
   int numProcesses() const;
   int numThreads() const;
+  int fcgiThreads() const;
   int maxNumSessions() const;
   ::int64_t maxRequestSize() const;
   ::int64_t isapiMaxMemoryRequestSize() const;
@@ -210,6 +211,7 @@ private:
   SessionPolicy   sessionPolicy_;
   int             numProcesses_;
   int             numThreads_;
+  int             fcgiThreads_;
   int             maxNumSessions_;
   ::int64_t       maxRequestSize_;
   ::int64_t       isapiMaxMemoryRequestSize_;

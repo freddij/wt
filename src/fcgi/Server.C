@@ -19,6 +19,7 @@
 #include <boost/lexical_cast.hpp>
 #include <exception>
 #include <vector>
+#include <algorithm>
 
 #include "fcgiapp.h"
 #include "Configuration.h"
@@ -104,6 +105,11 @@ Server::Server(WServer& wt, int argc, char *argv[])
    * Spawn the session processes for shared process policy
    */
   Configuration& conf = wt_.configuration();
+
+  int fcgiThreads = conf.fcgiThreads();
+  if (fcgiThreads == 0) fcgiThreads = std::max(conf.maxNumSessions(), conf.numThreads());
+  wt_.ioService().setThreadCount(fcgiThreads);
+  LOG_INFO_S(&wt_, "initializing " << wt_.ioService().threadCount() << " threads");
 
   if (conf.sessionPolicy() == Configuration::SharedProcess)
     for (int i = 0; i < conf.numProcesses(); ++i)

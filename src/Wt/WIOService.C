@@ -69,6 +69,7 @@ int WIOService::threadCount() const
 
 void WIOService::start()
 {
+  LOG_INFO("starts with " << threadCount() << " threads");
   if (!impl_->work_) {
     impl_->work_ = new boost::asio::io_service::work(*this);
 
