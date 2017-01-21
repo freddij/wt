@@ -17,8 +17,10 @@
 #include "Wt/WAbstractArea"
 #include "Wt/WAbstractItemModel"
 #include "Wt/WApplication"
+#include "Wt/WCanvasPaintDevice"
 #include "Wt/WCircleArea"
 #include "Wt/WException"
+#include "Wt/WEnvironment"
 #include "Wt/WJavaScriptHandle"
 #include "Wt/WJavaScriptObjectStorage"
 #include "Wt/WMeasurePaintDevice"
@@ -933,7 +935,9 @@ class MarkerRenderIterator : public SeriesIterator
 public:
   MarkerRenderIterator(const WCartesianChart& chart, WPainter& painter)
     : chart_(chart),
-      painter_(painter)
+      painter_(painter),
+      currentScale_(0),
+      series_(0)
   { }
 
   virtual bool startSeries(const WDataSeries& series, double groupWidth,
@@ -953,6 +957,9 @@ public:
 
   virtual void endSeries()
   {
+    finishPathFragment(*series_);
+    series_ = 0;
+
     if (needRestore_)
       painter_.restore();
   }
@@ -967,8 +974,6 @@ public:
 			     currentXSegment(), currentYSegment());
 
       if (!marker_.isEmpty()) {
-	painter_.save();
-
 	WPen pen = WPen(series.markerPen());
 	SeriesIterator::setPenColor(pen, series, xRow, xColumn, yRow, yColumn, MarkerPenColorRole);
 	if (chart_.seriesSelectionEnabled() &&
@@ -979,27 +984,28 @@ public:
 
 	WBrush brush = WBrush(series.markerBrush());
 	SeriesIterator::setBrushColor(brush, series, xRow, xColumn, yRow, yColumn, MarkerBrushColorRole);
-	setMarkerSize(painter_, series, xRow, xColumn, yRow, yColumn, series.markerSize());
+	double scale = calculateMarkerScale(series, xRow, xColumn, yRow, yColumn, series.markerSize());
 	if (chart_.seriesSelectionEnabled() &&
 	    chart_.selectedSeries() != 0 &&
 	    chart_.selectedSeries() != &series) {
 	  brush.setColor(WCartesianChart::lightenColor(brush.color()));
 	}
 
-	WTransform currentTransform = ((WTransform()).translate(chart_.zoomRangeTransform().map(hv(p)))) * scale_;
-	painter_.setWorldTransform(currentTransform, false);
+	if (!series_ ||
+	    brush != currentBrush_ ||
+	    pen != currentPen_ ||
+	    scale != currentScale_) {
+	  if (series_) {
+	    finishPathFragment(*series_);
+	  }
 
-	painter_.setShadow(series.shadow());
-	if (series.marker() != CrossMarker &&
-	    series.marker() != XCrossMarker &&
-	    series.marker() != AsteriskMarker &&
-	    series.marker() != StarMarker) {
-	  painter_.fillPath(marker_, brush);
-	  painter_.setShadow(WShadow());
+	  series_ = &series;
+	  currentBrush_ = brush;
+	  currentPen_ = pen;
+	  currentScale_ = scale;
 	}
-	painter_.strokePath(marker_, pen);
 
-	painter_.restore();
+	pathFragment_.moveTo(hv(p));
       }
 
       if (series.type() != BarSeries) {
@@ -1040,9 +1046,14 @@ private:
   WPainter& painter_;
   WPainterPath marker_;
   bool needRestore_;
-  WTransform scale_;
 
-  void setMarkerSize(WPainter& painter, const WDataSeries &series,
+  WPainterPath pathFragment_;
+  WPen currentPen_;
+  WBrush currentBrush_;
+  double currentScale_;
+  const WDataSeries *series_;
+
+  double calculateMarkerScale(const WDataSeries &series,
 		     int xRow, int xColumn,
 		     int yRow, int yColumn,
 		     double markerSize)
@@ -1058,11 +1069,46 @@ private:
     if (scale)
       dScale = *scale;
 
-  dScale = markerSize / 6 * dScale;
+    dScale = markerSize / 6 * dScale;
 
-  scale_ = WTransform(dScale, 0, 0, dScale, 0, 0);
-}
+    return dScale;
+  }
 
+  void finishPathFragment(const WDataSeries &series)
+  {
+    if (pathFragment_.segments().empty())
+      return;
+
+    painter_.save();
+
+    painter_.setWorldTransform(WTransform(currentScale_, 0, 0, currentScale_, 0, 0));
+
+    WTransform currentTransform = WTransform(1.0 / currentScale_, 0, 0, 1.0 / currentScale_, 0, 0) * chart_.zoomRangeTransform();
+
+    painter_.setPen(NoPen);
+    painter_.setBrush(NoBrush);
+    painter_.setShadow(series.shadow());
+    if (series.marker() != CrossMarker &&
+	series.marker() != XCrossMarker &&
+	series.marker() != AsteriskMarker &&
+	series.marker() != StarMarker) {
+      painter_.setBrush(currentBrush_);
+
+      if (!series.shadow().none())
+	painter_.drawStencilAlongPath(marker_, currentTransform.map(pathFragment_), false);
+
+      painter_.setShadow(WShadow());
+    }
+    painter_.setPen(currentPen_);
+    if (!series.shadow().none())
+      painter_.setBrush(NoBrush);
+
+    painter_.drawStencilAlongPath(marker_, currentTransform.map(pathFragment_), false);
+
+    painter_.restore();
+
+    pathFragment_ = WPainterPath();
+  }
 };
 
 // Used to find if a given point matches a marker, for tooltips
@@ -1140,6 +1186,7 @@ WCartesianChart::WCartesianChart(WContainerWidget *parent)
     panEnabled_(false),
     rubberBandEnabled_(true),
     crosshairEnabled_(false),
+    crosshairColor_(black),
     seriesSelectionEnabled_(false),
     selectedSeries_(0),
     followCurve_(0),
@@ -1223,7 +1270,7 @@ void WCartesianChart::init()
   xTransform_ = WTransform();
   yTransform_ = WTransform();
 
-  if (WApplication::instance() != 0) {
+  if (WApplication::instance() != 0 && WApplication::instance()->environment().ajax()) {
     mouseWentDown().connect("function(o, e){var o=" + this->cObjJsRef() + ";if(o){o.mouseDown(o, e);}}");
     mouseWentUp().connect("function(o, e){var o=" + this->cObjJsRef() + ";if(o){o.mouseUp(o, e);}}");
     mouseDragged().connect("function(o, e){var o=" + this->cObjJsRef() + ";if(o){o.mouseDrag(o, e);}}");
@@ -1938,7 +1985,7 @@ void WCartesianChart::iterateSeries(SeriesIterator *iterator,
     if (scatterPlot) {
       startSeries = endSeries = g;
     } else if (series_[g]->model() == model()) {
-      for (unsigned i = 0; i < rowCount; ++i)
+      for (int i = 0; i < rowCount; ++i)
 	posStackedValuesInit[i] = minStackedValuesInit[i] = 0.0;
 
       if (reverseStacked) {
@@ -1953,7 +2000,7 @@ void WCartesianChart::iterateSeries(SeriesIterator *iterator,
 	    if (series_[g]->type() == BarSeries)
 	      containsBars = true;
 
-	    for (unsigned row = 0; row < rowCount; ++row) {
+            for (int row = 0; row < rowCount; ++row) {
 	      double y = asNumber(model()->data(row, series_[g]->modelColumn()));
 
 	      if (!Utils::isNaN(y)) {
@@ -2043,7 +2090,7 @@ void WCartesianChart::iterateSeries(SeriesIterator *iterator,
 				     WRectF());
 	    }
 
-	    for (unsigned row = 0; row < (series_[i]->model() ? series_[i]->model()->rowCount() : 0); ++row) {
+            for (int row = 0; row < (series_[i]->model() ? series_[i]->model()->rowCount() : 0); ++row) {
 	      int xIndex[] = {-1, -1};
 	      int yIndex[] = {-1, -1};
 
@@ -2307,6 +2354,7 @@ void WCartesianChart::paintEvent(WPaintDevice *paintDevice)
 	  "zoom:" << asString(zoomEnabled_).toUTF8() << ","
 	  "pan:" << asString(panEnabled_).toUTF8() << ","
 	  "crosshair:" << asString(crosshairEnabled_).toUTF8() << ","
+          "crosshairColor:" << jsStringLiteral(crosshairColor_.cssText(true)) << ","
 	  "followCurve:" << followCurve << ","
 	  "xTransform:" << xTransformHandle_.jsRef() << ","
 	  "yTransform:" << yTransformHandle_.jsRef() << ","
@@ -2872,7 +2920,7 @@ void WCartesianChart::renderAxis(WPainter& painter, const WAxis& axis,
 
   bool vertical = axis.id() != XAxis;
 
-  if (isInteractive()) {
+  if (isInteractive() && dynamic_cast<WCanvasPaintDevice*>(painter.device())) {
     WRectF clipRect;
     WRectF area = hv(chartArea_);
     if (axis.location() == ZeroValue && location_[axis.id()] == ZeroValue) {
@@ -3265,6 +3313,9 @@ void WCartesianChart::renderCurveLabels(WPainter &painter) const
     const CurveLabel &label = curveLabels_[i];
     for (std::size_t j = 0; j < series_.size(); ++j) {
       const WDataSeries &series = *series_[j];
+      // Don't draw curve labels for hidden series
+      if (series.isHidden())
+	continue;
       if (&series == &label.series()) {
 	WTransform t = zoomRangeTransform();
 	if (series.type() == LineSeries || series.type() == CurveSeries) {
@@ -3272,15 +3323,15 @@ void WCartesianChart::renderCurveLabels(WPainter &painter) const
 	}
 	// Find the right x and y segment
 	int xSegment = 0;
-	while (xSegment < axis(XAxis).segmentCount() && (axis(XAxis).segments_[xSegment].renderMinimum > label.point().x()
-				  || axis(XAxis).segments_[xSegment].renderMaximum < label.point().x())) {
-	  ++xSegment;
-	}
+        if (!isInteractive())
+          while (xSegment < axis(XAxis).segmentCount() && (axis(XAxis).segments_[xSegment].renderMinimum > label.point().x()
+                                    || axis(XAxis).segments_[xSegment].renderMaximum < label.point().x()))
+            ++xSegment;
 	int ySegment = 0;
-	while (ySegment < axis(series.axis()).segmentCount() && (axis(series.axis()).segments_[ySegment].renderMinimum > label.point().y()
-				  || axis(series.axis()).segments_[ySegment].renderMaximum < label.point().y())) {
-	  ++ySegment;
-	}
+        if (!isInteractive())
+          while (ySegment < axis(series.axis()).segmentCount() && (axis(series.axis()).segments_[ySegment].renderMinimum > label.point().y()
+                                    || axis(series.axis()).segments_[ySegment].renderMaximum < label.point().y()))
+            ++ySegment;
 	// Only draw the label if it is actually on a segment
 	if (xSegment < axis(XAxis).segmentCount() && ySegment < axis(series.axis()).segmentCount()) {
 	  // Figure out the device coordinates of the point to draw a label at.
@@ -3750,6 +3801,14 @@ void WCartesianChart::setCrosshairEnabled(bool crosshair)
 bool WCartesianChart::crosshairEnabled() const
 {
   return crosshairEnabled_;
+}
+
+void WCartesianChart::setCrosshairColor(const WColor &color)
+{
+  if (crosshairColor_ != color) {
+    crosshairColor_ = color;
+    updateJSConfig("crosshairColor", jsStringLiteral(color.cssText(true)));
+  }
 }
 
 void WCartesianChart::setFollowCurve(int followCurve)
