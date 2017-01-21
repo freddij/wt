@@ -515,7 +515,6 @@ this.replaceWith = function(w1Id, $w2)
 {
   var $w1 = $("#" + w1Id);
   $w1.replaceWith($w2);
-  if (typeof $w2.get(0) === 'undefined') return;
 
   /* Reapply client-side validation, bootstrap applys validation classes
      also outside the element into its ancestors */
