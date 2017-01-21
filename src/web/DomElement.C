@@ -864,8 +864,12 @@ void DomElement::asHTML(EscapeOStream& out,
       out << '"';
 
       std::string wrapStyle = cssStyle();
-      if (!isDefaultInline())
-	wrapStyle += "display: block;";
+      if (!isDefaultInline()) {
+	// Put display: block; first, because it might
+	// still be overridden if a widget is set to be inlined,
+	// but isn't inline by default.
+	wrapStyle = "display: block;" + wrapStyle;
+      }
 
       if (!wrapStyle.empty()) {
 	out << " style=";
@@ -995,8 +999,10 @@ void DomElement::asHTML(EscapeOStream& out,
       if (type_ != DomElement_TEXTAREA) {
 	out << " value=";
 	fastHtmlAttributeValue(out, attributeValues, i->second);
-      } else
-	innerHTML += i->second;
+      } else {
+	std::string v = i->second;
+  innerHTML += WWebWidget::escapeText(v, false);
+      }
       break;
     case PropertySrc:
       out << " src=";

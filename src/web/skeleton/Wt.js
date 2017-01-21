@@ -73,20 +73,7 @@ this.button = function(e)
     return 0;
   }
 
-  if (!WT.isGecko && 
-      typeof e.which !== UNDEFINED && 
-      typeof e.which !== UNKNOWN) {
-    if (e.which == 3)
-      return 4;
-    else if (e.which == 2)
-      return 2;
-    else if (e.which == 1)
-      return 1;
-    else
-      return 0;
-  } else if (WT.isIE && 
-	     typeof e.which !== UNDEFINED &&
-	     typeof e.which !== UNKNOWN) {
+  if (WT.isIElt9) {
     if (e.button == 2)
       return 4;
     else if (e.button == 4)
@@ -95,16 +82,15 @@ this.button = function(e)
       return 1;
     else
       return 0;
-  } else if (typeof e.which !== UNDEFINED &&
-	     typeof e.which !== UNKNOWN) {
-    if (e.button == 2)
-      return 4;
+  } else {
+    if (e.button == 0)
+      return 1;
     else if (e.button == 1)
       return 2;
+    else if (e.button == 2)
+      return 4;
     else
-      return 1;
-  } else {
-    return 0;
+      return 0;
   }
 };
 
@@ -277,13 +263,9 @@ this.initAjaxComm = function(url, handler) {
 	  if (!sessionUrl)
 	    return;
 
-	  if (good) {
-	    handled = true;
-	    handler(0, request.responseText, userData);
-	  } else {
-	    handler(1, null, userData); 
-	  }
+	  handled = true;
 
+	  var rq = request;
 	  if (request) {
 	    request.onreadystatechange = new Function;
 	    try {
@@ -296,7 +278,11 @@ this.initAjaxComm = function(url, handler) {
 	    request = null;
 	  }
 
-	  handled = true;
+	  if (good) {
+	    handler(0, rq.responseText, userData);
+	  } else {
+	    handler(1, null, userData); 
+	  }
 	}
 
 	function recvCallback() {
@@ -311,6 +297,9 @@ this.initAjaxComm = function(url, handler) {
 	}
 
 	function handleTimeout() {
+	  if (handled)
+	    return;
+
 	  if (!sessionUrl)
 	    return;
 
@@ -948,6 +937,37 @@ this.scrollIntoView = function(id) {
     }, 100);
 };
 
+function isHighSurrogate(chr) {
+  return 0xD800 <= chr && chr <= 0xDBFF;
+};
+
+function isLowSurrogate(chr) {
+  return 0xDC00 <= chr && chr <= 0xDFFF;
+};
+
+function toUnicodeSelection(selection, text) {
+  var i;
+  var start = selection.start;
+  var end = selection.end;
+  for (i = 0; i < text.length; ++i) {
+    if (i >= selection.start && i >= selection.end)
+      return {start: start, end: end};
+    if (isHighSurrogate(text.charCodeAt(i)) &&
+	(i + 1) < text.length &&
+	isLowSurrogate(text.charCodeAt(i + 1))) {
+      if (i < selection.start)
+	--start;
+      if (i < selection.end)
+	--end;
+    }
+  }
+  return {start: start, end: end};
+};
+
+this.getUnicodeSelectionRange = function(elem) {
+  return toUnicodeSelection(WT.getSelectionRange(elem), $(elem).val());
+};
+
 this.getSelectionRange = function(elem) {
   if (document.selection) { // IE
     if (WT.hasTag(elem, 'TEXTAREA')) {
@@ -998,7 +1018,11 @@ this.getSelectionRange = function(elem) {
     return {start: -1, end: -1};
 };
 
-this.setSelectionRange = function(elem, start, end) {
+this.setUnicodeSelectionRange = function(elem, start, end) {
+  return WT.setSelectionRange(elem, start, end, true);
+};
+
+this.setSelectionRange = function(elem, start, end, unicode) {
   /**
    * @preserve Includes jQuery Caret Range plugin
    * Copyright (c) 2009 Matt Zabriskie
@@ -1015,6 +1039,22 @@ this.setSelectionRange = function(elem, start, end) {
 
   elem.focus();
 
+  if (unicode) {
+    var i;
+    for (i = 0; i < val.length; ++i) {
+      if (i >= start && i >= end)
+	break;
+      if (isHighSurrogate(val.charCodeAt(i)) &&
+	  (i + 1) < val.length &&
+	  isLowSurrogate(val.charCodeAt(i + 1))) {
+	if (i < start)
+	  ++start;
+	if (i < end)
+	  ++end;
+      }
+    }
+  }
+  
   if (typeof elem.selectionStart !== UNDEFINED) {
     elem.selectionStart = start;
     elem.selectionEnd = end;
@@ -1315,6 +1355,44 @@ function mouseUp(e) {
     return true;
 }
 
+function touchMove(e) {
+  var d = delegateCapture(e);
+
+  if (d && !delegating) {
+    if (!e) e = window.event;
+    delegating = true;
+    if (WT.isIElt9) {
+      WT.firedTarget = e.srcElement || d;
+      d.fireEvent('ontouchmove', e);
+      WT.firedTarget = null;
+    } else
+      WT.condCall(d, 'ontouchmove', e);
+    delegating = false;
+    return false;
+  } else
+    return true;
+}
+
+function touchEnd(e) {
+  var d = delegateCapture(e);
+  WT.capture(null);
+
+  if (d) {
+    if (!e) e = window.event;
+
+    if (WT.isIElt9) {
+      WT.firedTarget = e.srcElement || d;
+      d.fireEvent('ontouchend', e);
+      WT.firedTarget = null;
+    } else
+      WT.condCall(d, 'ontouchend', e);
+
+    WT.cancelEvent(e, WT.CancelPropagate);
+
+    return false;
+  } else
+    return true;
+}
 var captureInitialized = false;
 
 function attachMouseHandlers(el) {
@@ -1335,6 +1413,17 @@ function attachMouseHandlers(el) {
   }
 }
 
+function attachTouchHandlers(el) {
+  if (el.addEventListener) {
+    el.addEventListener('touchmove', touchMove, true);
+    el.addEventListener('touchend', touchEnd, true);
+    //Gecko?
+  } else {
+    el.attachEvent('ontouchmove', touchMove);
+    el.attachEvent('ontouchend', touchEnd);
+  }
+}
+
 function initCapture() {
   if (captureInitialized)
     return;
@@ -1343,6 +1432,7 @@ function initCapture() {
 
   var db = document.body;
   attachMouseHandlers(db);
+  attachTouchHandlers(db);
 }
 
 this.capture = function(obj) {
@@ -1382,7 +1472,7 @@ this.capture = function(obj) {
 };
 
 this.checkReleaseCapture = function(obj, e) {
-  if (e && captureElement && (obj == captureElement) && e.type == "mouseup")
+  if (e && captureElement && (obj == captureElement) && (e.type == "mouseup" || e.type == "touchend"))
     this.capture(null);
 };
 
@@ -1719,7 +1809,6 @@ this.positionAtWidget = function(id, atId, orientation, delta) {
   
     for (p = pp.parentNode; p != domRoot; p = p.parentNode) {
       if (p.wtResize) {
-	p = pp;
 	break;
       }
 
@@ -2261,8 +2350,27 @@ function initDragDrop() {
   };
 }
 
+var touchTimer;
+var touchduration = 1000;
+
+function touchStart(obj, e) {
+  touchTimer = setTimeout(function(){dragStart(obj,e);}, touchduration);
+}
+
+function touchEnded(){
+  if (touchTimer)
+    clearTimeout(touchTimer);
+}
+
 function dragStart(obj, e) {
-  if (e.ctrlKey || WT.button(e) > 1) //Ignore drags with rigth click.
+  if (e.touches) {
+    if ("vibrate" in navigator) {
+      navigator.vibrate = navigator.vibrate || navigator.webkitVibrate || navigator.mozVibrate || navigator.msVibrate;
+      if (navigator.vibrate) 
+	navigator.vibrate(100);
+    }
+  }
+  if ((e.ctrlKey || WT.button(e) > 1) && !e.touches) //Ignore drags with rigth click.
     return true;
   var t = WT.target(e);
   if (t) {
@@ -2317,6 +2425,8 @@ function dragStart(obj, e) {
 
   ds.object.onmousemove = dragDrag;
   ds.object.onmouseup = dragEnd;
+  ds.object.ontouchmove = dragDrag;
+  ds.object.ontouchend = dragEnd;
 
   ds.offsetX = -4;
   ds.offsetY = -4;
@@ -2344,14 +2454,21 @@ function dragDrag(e) {
     ds.object.style.top = (xy.y - ds.offsetY) + 'px';
 
     var prevDropTarget = ds.dropTarget;
-    var t = WT.target(e);
-    if (t == ds.object) {
-      if (document.elementFromPoint) {
+    var t;
+    if (e.changedTouches) {
 	ds.object.style['display']='none';
-	t = document.elementFromPoint(e.clientX, e.clientY);
+	t = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
 	ds.object.style['display']='';
-      }
-    }
+     } else {
+	t = WT.target(e);
+        if (t == ds.object) {
+          if (document.elementFromPoint) {
+	    ds.object.style['display']='none';
+	    t = document.elementFromPoint(e.clientX, e.clientY);
+	    ds.object.style['display']='';
+      	  } 
+    	}
+      } 
 
     var mimeType = "{" + ds.mimeType + ":";
     var amts = null;
@@ -2383,25 +2500,23 @@ function dragDrag(e) {
       }
 
       if (prevDropTarget != null) {
-	if (prevDropTarget.handleDragDrop)
-	  prevDropTarget.handleDragDrop('end', ds.object, e, '', mimeType);
+	if (prevDropTarget.handleDragDrop){
+	  prevDropTarget.handleDragDrop('end', ds.object, e, '', mimeType);}
 	var dos = prevDropTarget.getAttribute("dos");
         if (dos != null)
 	  prevDropTarget.className = dos;
       }
-    }
+    } 
 
     if (ds.dropTarget) {
       if (ds.dropTarget.handleDragDrop)
 	ds.dropTarget.handleDragDrop('drag', ds.object, e, '', mimeType);
       else
 	ds.object.className = ds.objectPrevStyle.className + ' Wt-valid-drop';
-    } else
+    } else 
       ds.object.className = ds.objectPrevStyle.className + '';
-
     return false;
   }
-
   return true;
 };
 
@@ -2414,14 +2529,19 @@ function dragEnd(e) {
   if (ds.object) {
     if (ds.dropTarget) {
       var dos = ds.dropTarget.getAttribute("dos");
-      if (dos != null)
-	  ds.dropTarget.className = dos;
-      if (ds.dropTarget.handleDragDrop)
+      if (dos != null){
+	  ds.dropTarget.className = dos;}
+      if (ds.dropTarget.handleDragDrop){
 	ds.dropTarget.handleDragDrop('drop', ds.object, e,
 				     ds.sourceId, ds.mimeType);
-      else
-	emit(ds.dropTarget, {name: "_drop", eventObject: ds.dropTarget,
+      }else{
+ 	if (e.touches)
+	  emit(ds.dropTarget, {name: "_drop2", eventObject: ds.dropTarget,
 	      event: e}, ds.sourceId, ds.mimeType);
+	else
+	  emit(ds.dropTarget, {name: "_drop", eventObject: ds.dropTarget,
+	      event: e}, ds.sourceId, ds.mimeType);
+      }
     } else {
       // could not be dropped, animate it floating back ?
     }
@@ -2437,6 +2557,8 @@ function dragEnd(e) {
     ds.object.className = ds.objectPrevStyle.className;
 
     ds.object = null;
+    if (touchTimer)
+      clearTimeout(touchTimer);
   }
 };
 
@@ -2507,7 +2629,7 @@ function encodeEvent(event, i) {
       }
 
       if (WT.hasFocus(el)) {
-	var range = WT.getSelectionRange(el);
+	var range = WT.getUnicodeSelectionRange(el);
 	result += se + "selstart=" + range.start
 	  + se + "selend=" + range.end;
       }
@@ -2696,7 +2818,7 @@ function quit(hasQuitMessage) {
 function doKeepAlive() {
   WT.history._initTimeout();
   if (commErrors == 0)
-    update(null, 'none', null, false);
+    update(null, 'keepAlive', null, false);
 }
 
 function debug(s) {
@@ -2770,6 +2892,38 @@ function waitFeedback() {
   document.body.style.cursor = 'wait';
   currentHideLoadingIndicator = hideLoadingIndicator;
   showLoadingIndicator();
+}
+
+var nextWsRqId = 0;
+var pendingWsRequests = {};
+
+function wsWaitFeedback() {
+  var now = Date.now();
+  var maxRqId = -1;
+  for (var wsReq in pendingWsRequests) {
+    if (pendingWsRequests.hasOwnProperty(wsReq)) {
+      if (now - pendingWsRequests[wsReq].time >= _$_INDICATOR_TIMEOUT_$_) {
+        if (currentHideLoadingIndicator == null)
+          waitFeedback();
+        return;
+      }
+      var wsReqI = parseInt(wsReq, 10);
+      if (wsReqI > maxRqId)
+	maxRqId = wsReqI;
+    }
+  }
+  nextWsRqId = maxRqId + 1;
+  // We're not waiting on any WebSocket requests for longer than
+  // INDICATOR_TIMEOUT, so hide the loading indicator and reset
+  // the cursor.
+  document.body.style.cursor = 'auto';
+  if (currentHideLoadingIndicator != null) {
+    try {
+      currentHideLoadingIndicator();
+    } catch (e) {
+    }
+    currentHideLoadingIndicator = null;
+  }
 }
 
 /** @const */ var WebSocketUnknown = 0;
@@ -3014,10 +3168,14 @@ _$_$if_WEB_SOCKETS_$_();
 	  } else {
 	    var query = sessionUrl.substr(sessionUrl.indexOf('?'));
 	    wsurl = "ws" + location.protocol.substr(4)
-	      + "//" + location.host + deployUrl + query;
+	      + "//" + location.host + _$_WS_PATH_$_ + query;
 	  }
 
 	  wsurl += "&request=ws";
+
+	  var wsid = _$_WS_ID_$_;
+	  if (wsid.length > 0)
+	    wsurl += "&wsid=" + wsid;
 
 	  if (typeof window.WebSocket !== UNDEFINED)
 	    websocket.socket = ws = new WebSocket(wsurl);
@@ -3151,6 +3309,17 @@ function responseReceived(updateId, puzzle) {
   comm.responseReceived(updateId);
 }
 
+function wsRqsDone() {
+  for (var i = 0; i < arguments.length; ++i) {
+    var wsRqId = arguments[i];
+    if (wsRqId in pendingWsRequests) {
+      clearTimeout(pendingWsRequests[wsRqId].tm);
+      delete pendingWsRequests[wsRqId];
+    }
+  }
+  wsWaitFeedback();
+}
+
 var pageId = 0;
 function setPage(id) {
   pageId = id;
@@ -3184,9 +3353,13 @@ function sendUpdate() {
 
   var data, tm, poll;
 
+  var useWebSockets = websocket.socket !== null &&
+                      websocket.socket.readyState === 1 &&
+                      websocket.state === WebSocketWorking;
+
   if (pendingEvents.length > 0) {
     data = encodePendingEvents();
-    tm = data.feedback ? setTimeout(waitFeedback, _$_INDICATOR_TIMEOUT_$_)
+    tm = data.feedback ? setTimeout(useWebSockets ? wsWaitFeedback : waitFeedback, _$_INDICATOR_TIMEOUT_$_)
       : null;
     poll = false;
   } else {
@@ -3195,7 +3368,11 @@ function sendUpdate() {
     poll = true;
   }
 
-  data.result += '&ackId=' + ackUpdateId + '&pageId=' + pageId;
+  if (!useWebSockets) {
+    data.result += '&ackId=' + ackUpdateId;
+  }
+
+  data.result += '&pageId=' + pageId;
 
   if (ackPuzzle) {
     var solution = '';
@@ -3214,24 +3391,42 @@ function sendUpdate() {
     data.result += '&ackPuzzle=' + encodeURIComponent(solution);
   }
 
-  var params = "_$_PARAMS_$_";
+  function getParams() {
+    // Prevent minifier from optimizing away the length check.
+    return "_$_PARAMS_$_";
+  }
+  var params = getParams();
   if (params.length > 0)
     data.result += '&Wt-params=' + encodeURIComponent(params);
 
-  if ((websocket.socket != null) &&
-      (websocket.socket.readyState == 1) &&
-      (websocket.state == WebSocketWorking)) {
+  if (useWebSockets) {
     responsePending = null;
 
-    if (tm != null) {
-      clearTimeout(tm);
-      tm = null;
-    }
-
     if (!poll) {
+      if (tm) {
+	var wsRqId = nextWsRqId;
+	pendingWsRequests[wsRqId] = {time: Date.now(), tm: tm};
+	++nextWsRqId;
+	data.result += '&wsRqId=' + wsRqId;
+      }
+
       websocket.socket.send(data.result);
     }
   } else {
+    if (responsePending) {
+      try {
+	throw new Error("responsePending is true before comm.sendUpdate");
+      } catch (e) {
+	var stack = e.stack || e.stacktrace;
+	var description = e.description || e.message;
+	var err = { "exception_description" : description };
+	err.stack = stack;
+	sendError(err, "Wt internal error; description: " + description);
+	throw e;
+      }
+    }
+
+    responsePending = 1;
     responsePending = comm.sendUpdate
       ('request=jsupdate' + data.result, tm, ackUpdateId, -1);
 
@@ -3620,6 +3815,10 @@ function bindGlobal(event, id, f) {
     }, 0);
 }
 
+function refreshMultiSessionCookie() {
+  comm.sendUpdate('request=jsupdate&signal=keepAlive&ackId=' + ackUpdateId, false, ackUpdateId, -1);
+}
+
 this._p_ = {
   ieAlternative : ieAlternative,
   loadScript : loadScript,
@@ -3635,6 +3834,8 @@ this._p_ = {
   load : load,
   setServerPush : setServerPush,
 
+  touchStart :touchStart,
+  touchEnded: touchEnded,
   dragStart : dragStart,
   dragDrag : dragDrag,
   dragEnd : dragEnd,
@@ -3650,11 +3851,13 @@ this._p_ = {
   autoJavaScript : function() { },
 
   response : responseReceived,
+  wsRqsDone : wsRqsDone,
   setPage : setPage,
   setCloseMessage : setCloseMessage,
   setConnectionMonitor : setConnectionMonitor,
   updateGlobal: updateGlobal,
   bindGlobal: bindGlobal,
+  refreshCookie: refreshMultiSessionCookie,
 
   propagateSize : propagateSize
 };
