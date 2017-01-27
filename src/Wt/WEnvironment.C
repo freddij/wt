@@ -288,7 +288,7 @@ std::string WEnvironment::getClientAddress(const WebRequest& request,
   }
 
   if (result.empty())
-    result = str(request.headerValue("REMOTE_ADDR"));
+    result = str(request.envValue("REMOTE_ADDR"));
 
   return result;
 }
