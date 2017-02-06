@@ -135,6 +135,7 @@ public:
   int numProcesses() const;
   int numThreads() const;
   int fcgiThreads() const;
+  int proxyThreads() const;
   int maxNumSessions() const;
   ::int64_t maxRequestSize() const;
   ::int64_t isapiMaxMemoryRequestSize() const;
@@ -220,6 +221,7 @@ private:
   int             numProcesses_;
   int             numThreads_;
   int             fcgiThreads_;
+  int             proxyThreads_;
   int             maxNumSessions_;
   ::int64_t       maxRequestSize_;
   ::int64_t       isapiMaxMemoryRequestSize_;

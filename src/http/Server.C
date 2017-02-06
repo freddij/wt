@@ -100,6 +100,14 @@ Server::Server(const Configuration& config, Wt::WServer& wtServer)
 
   if (wt_.configuration().sessionPolicy() == Wt::Configuration::DedicatedProcess &&
       config.parentPort() == -1) {
+    // patch wt/http/proxy threads
+    int proxyThreads = wt_.configuration().proxyThreads();
+    if (proxyThreads == 0) {
+      proxyThreads = wt_.configuration().maxNumSessions() * wt_.configuration().numThreads();
+    }
+    wt_.ioService().setThreadCount(proxyThreads);
+    // end of patch wt/http/proxy threads
+
     sessionManager_ = new SessionProcessManager(wt_.ioService(), wt_.configuration());
     request_handler_.setSessionManager(sessionManager_);
   }

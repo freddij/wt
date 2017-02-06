@@ -201,6 +201,7 @@ void Configuration::reset()
   numProcesses_ = 1;
   numThreads_ = 10;
   fcgiThreads_ = 0;
+  proxyThreads_ = 0;
   maxNumSessions_ = 100;
   maxRequestSize_ = 128 * 1024;
   isapiMaxMemoryRequestSize_ = 128 * 1024;
@@ -267,6 +268,12 @@ int Configuration::fcgiThreads() const
 {
   READ_LOCK;
   return fcgiThreads_;
+}
+
+int Configuration::proxyThreads() const
+{
+  READ_LOCK;
+  return proxyThreads_;
 }
 
 int Configuration::maxNumSessions() const
@@ -678,6 +685,7 @@ void Configuration::readApplicationSettings(xml_node<> *app)
   }
 
   setInt(app, "num-threads", numThreads_);
+  setInt(app, "proxy-threads", proxyThreads_);
 
   xml_node<> *fcgi = singleChildElement(app, "connector-fcgi");
   if (!fcgi)
