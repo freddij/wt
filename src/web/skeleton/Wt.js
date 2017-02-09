@@ -507,7 +507,6 @@ this.replaceWith = function(w1Id, $w2)
 
   /* Reapply client-side validation, bootstrap applys validation classes
      also outside the element into its ancestors */
-  if (typeof $w2.get(0) === 'undefined') return;
   if ($w2.get(0).wtValidate && WT.validate) {
     setTimeout(function() { 
       WT.validate($w2.get(0));
