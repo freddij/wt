@@ -65,6 +65,9 @@ std::vector<WCssStyleSheet> WCssTheme::styleSheets() const
 
 void WCssTheme::apply(WWidget *widget, WWidget *child, int widgetRole) const
 {
+  if (!widget->isThemeStyleEnabled())
+    return;
+
   switch (widgetRole) {
   case MenuItemIconRole:
     child->addStyleClass("Wt-icon");
@@ -78,7 +81,7 @@ void WCssTheme::apply(WWidget *widget, WWidget *child, int widgetRole) const
     break;
 
   case DialogCoverRole:
-    child->setStyleClass("Wt-dialogcover");
+    child->setStyleClass("Wt-dialogcover in");
     break;
   case DialogTitleBarRole:
     child->addStyleClass("titlebar");
@@ -135,6 +138,9 @@ void WCssTheme::apply(WWidget *widget, WWidget *child, int widgetRole) const
 void WCssTheme::apply(WWidget *widget, DomElement& element, int elementRole)
   const
 {
+  if (!widget->isThemeStyleEnabled())
+    return;
+
   bool creating = element.mode() == DomElement::ModeCreate;
 
   {
