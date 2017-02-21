@@ -275,9 +275,13 @@ std::string WEnvironment::getClientAddress(const WebRequest& request,
       boost::trim(result);
 
       if (!result.empty()
+          /* tidak cocok untuk kondisi di Nusantara or use in private networks
 	  && !boost::starts_with(result, "10.")
 	  && !boost::starts_with(result, "172.16.")
-	  && !boost::starts_with(result, "192.168.")) {
+	  && !boost::starts_with(result, "192.168.")
+		  */
+		  && !boost::starts_with(result, "127.")
+	  ) {
 	break;
       }
     }
