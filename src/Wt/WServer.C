@@ -330,7 +330,8 @@ int WServer::waitForShutdown(const char *restartWatchFile)
   sigemptyset(&wait_mask);
 
   // Block the signals which interest us
-  sigaddset(&wait_mask, SIGHUP);
+	sigaddset(&wait_mask, SIGUSR1);
+	sigaddset(&wait_mask, SIGHUP);
   sigaddset(&wait_mask, SIGINT);
   sigaddset(&wait_mask, SIGQUIT);
   sigaddset(&wait_mask, SIGTERM);
@@ -348,10 +349,13 @@ int WServer::waitForShutdown(const char *restartWatchFile)
 
         // branch based on the signal which was raised.
         switch(sig) {
-          case SIGHUP: // SIGHUP means re-read the configuration.
+					case SIGUSR1: // SIGUSR1 means re-read the configuration.
             if (instance())
 	      instance()->configuration().rereadConfiguration();
             break;
+					case SIGHUP: // ignore SIGHUP
+						LOG_INFO("Received SIGHUP");
+						break;
 
           default: // Any other blocked signal means time to quit.
             return sig;
