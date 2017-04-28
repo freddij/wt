@@ -330,10 +330,10 @@ int WServer::waitForShutdown(const char *restartWatchFile)
   sigemptyset(&wait_mask);
 
   // Block the signals which interest us
-	sigaddset(&wait_mask, SIGUSR1);
-	sigaddset(&wait_mask, SIGHUP);
+  sigaddset(&wait_mask, SIGHUP);
   sigaddset(&wait_mask, SIGINT);
   sigaddset(&wait_mask, SIGQUIT);
+  sigaddset(&wait_mask, SIGUSR1);
   sigaddset(&wait_mask, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &wait_mask, 0);
 
@@ -355,7 +355,6 @@ int WServer::waitForShutdown(const char *restartWatchFile)
             break;
 					case SIGHUP: // ignore SIGHUP
 						LOG_INFO("Received SIGHUP");
-						break;
 
           default: // Any other blocked signal means time to quit.
             return sig;
