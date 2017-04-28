@@ -1396,7 +1396,7 @@ std::string DomElement::asJavaScript(EscapeOStream& out,
     renderInnerHtmlJS(out, app);
 
     for (unsigned i = 0; i < childrenToSave_.size(); ++i)
-      out << WT_CLASS ".replaceWith('" << childrenToSave_[i] << "',c"
+			out << "$('#" << childrenToSave_[i] << "').replaceWith(c"
 	  << var_ << (int)i << ");";
 
     // Fix for http://redmine.emweb.be/issues/1847: custom JS
