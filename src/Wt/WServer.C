@@ -262,6 +262,12 @@ void WServer::removeEntryPoint(const std::string& path){
 
 void WServer::restart(int argc, char **argv, char **envp)
 {
+	// exit if argv has parent-port
+	for (int i=0; i<argc; ++i)
+	{
+		if (strstr(argv[i], "parent-port"))
+			return;
+	}
 #ifndef WT_WIN32
   char *path = realpath(argv[0], 0);
 
