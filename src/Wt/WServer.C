@@ -342,15 +342,15 @@ int WServer::waitForShutdown(const char *restartWatchFile)
     // Wait for a signal to be raised
     rc= sigwait(&wait_mask, &sig);
 
-    // branch based on return value of sigwait(). 
+    // branch based on return value of sigwait().
     switch (rc) {
       case 0: // rc indicates one of the blocked signals was raised.
 
         // branch based on the signal which was raised.
         switch(sig) {
           case SIGHUP: // SIGHUP means re-read the configuration.
-            if (instance())
-	      instance()->configuration().rereadConfiguration();
+            if (0 && instance()) // disable re-read config
+              instance()->configuration().rereadConfiguration();
             break;
 
           default: // Any other blocked signal means time to quit.
@@ -359,14 +359,14 @@ int WServer::waitForShutdown(const char *restartWatchFile)
 
         break;
       case EINTR:
-	// rc indicates an unblocked signal was raised, so we'll go
-	// around again.
+        // rc indicates an unblocked signal was raised, so we'll go
+        // around again.
 
         break;
       default:
-	// report the error and return an obviously illegitimate signal value.
+        // report the error and return an obviously illegitimate signal value.
         throw WServer::Exception(std::string("sigwait() error: ")
-				 + strerror(rc));
+                                 + strerror(rc));
         return -1;
     }
   }
