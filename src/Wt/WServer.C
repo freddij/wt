@@ -338,14 +338,23 @@ int WServer::waitForShutdown(const char *restartWatchFile)
 
   for (;;) {
     int rc, sig= -1;
+    siginfo_t siginfo;
+    char buf[80];
 
     // Wait for a signal to be raised
-    rc= sigwait(&wait_mask, &sig);
+    rc= sigwaitinfo(&wait_mask, &siginfo);
+    if (rc > 0)
+    {
+      sig = rc;
+      rc = 0;
+    } else rc = errno;
 
     // branch based on return value of sigwait().
     switch (rc) {
       case 0: // rc indicates one of the blocked signals was raised.
-
+        // log sender pid
+        sprintf(buf, "Receive signal %d; sender: pid %d, uid %d", sig, siginfo.si_pid, siginfo.si_uid);
+        LOG_WARN(buf);
         // branch based on the signal which was raised.
         switch(sig) {
           case SIGHUP: // SIGHUP means re-read the configuration.
