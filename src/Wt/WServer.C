@@ -347,11 +347,12 @@ int WServer::waitForShutdown(const char *restartWatchFile)
     {
       sig = rc;
       rc = 0;
-    } else rc = errno;
+    } else rc = siginfo.si_errno;
 
     // branch based on return value of sigwait().
     switch (rc) {
       case 0: // rc indicates one of the blocked signals was raised.
+        if (sig == -1) break; // signal has been catch somewhere else
         // log sender pid
         sprintf(buf, "Receive signal %d; sender: pid %d, uid %d", sig, siginfo.si_pid, siginfo.si_uid);
         LOG_WARN(buf);
@@ -360,6 +361,10 @@ int WServer::waitForShutdown(const char *restartWatchFile)
           case SIGHUP: // SIGHUP means re-read the configuration.
             if (0 && instance()) // disable re-read config
               instance()->configuration().rereadConfiguration();
+            break;
+
+          case SIGUSR1:
+          case SIGUSR2:
             break;
 
           default: // Any other blocked signal means time to quit.
