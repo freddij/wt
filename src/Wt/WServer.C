@@ -345,22 +345,23 @@ int WServer::waitForShutdown(const char *restartWatchFile)
     rc= sigwaitinfo(&wait_mask, &siginfo);
     if (rc > 0)
     {
-      sig = rc;
+      sig = siginfo.si_signo;
       rc = 0;
-    } else rc = siginfo.si_errno;
+    } else continue;//rc = errno;
 
     // branch based on return value of sigwait().
     switch (rc) {
       case 0: // rc indicates one of the blocked signals was raised.
-        if (sig == -1) break; // signal has been catch somewhere else
         // log sender pid
-        sprintf(buf, "Receive signal %d; sender: pid %d, uid %d", sig, siginfo.si_pid, siginfo.si_uid);
+        sprintf(buf, "SIGINFO %d: %s, pid %d, uid %d"
+                , siginfo.si_signo
+                , siginfo.si_code==SI_USER ? "SI_USER" : siginfo.si_code==SI_KERNEL ? "SI_KERNEL" : "SI_??",
+                siginfo.si_pid, siginfo.si_uid);
         LOG_WARN(buf);
         // branch based on the signal which was raised.
         switch(sig) {
           case SIGHUP: // SIGHUP means re-read the configuration.
-            if (0 && instance()) // disable re-read config
-              instance()->configuration().rereadConfiguration();
+            //if (instance()) instance()->configuration().rereadConfiguration();
             break;
 
           case SIGUSR1:
