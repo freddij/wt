@@ -8,8 +8,8 @@
 
 WT_DECLARE_WT_MEMBER
 (1, JavaScriptFunction, "animateDisplay",
- function(id, effects, timing, duration, display) {
-  var WT = this;
+ function(APP, id, effects, timing, duration, display) {
+  var WT = APP.WT;
 
   var doAnimateDisplay = function(id, effects, timing, duration, display) {
 
@@ -93,9 +93,8 @@ WT_DECLARE_WT_MEMBER
 
       $el.removeClass("animating");
 
-      // FIXME: APP instead of Wt
-      if (Wt.layouts2)
-	Wt.layouts2.setElementDirty(el);
+      if (APP.layouts2)
+	APP.layouts2.setElementDirty(el);
     }
 
     function show() {
@@ -239,6 +238,9 @@ WT_DECLARE_WT_MEMBER
     function animateTransition() {
       set(el, { animationDuration: duration + 'ms' }, elStyle);
 
+      if (hide)
+	$el.removeClass("in");
+
       var cl;
 
       switch (effect) {
@@ -257,6 +259,8 @@ WT_DECLARE_WT_MEMBER
 
       $el.addClass(cl);
       $el.one(animationEventEnd, function() {
+          if (!hide)
+	    cl = cl.replace(' in', '');
 	  $el.removeClass(cl);
 	  if (hide)
 	    el.style.display = display;

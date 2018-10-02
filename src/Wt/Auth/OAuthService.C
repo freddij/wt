@@ -53,6 +53,11 @@ public:
       process_(process)
   { }
 
+  virtual ~OAuthRedirectEndpoint()
+  {
+    beingDeleted();
+  }
+
   void sendError(Http::Response& response)
   {
     response.setStatus(500);
@@ -104,7 +109,7 @@ public:
       cont->waitForMoreData();
 #endif
 
-      process_->requestToken(*codeE);
+      process_->requestToken(*codeE); // Blocking in JWt, so no continuation necessary
 #ifndef WT_TARGET_JAVA
     } else
 #endif
@@ -120,22 +125,36 @@ public:
 #endif // WT_TARGET_JAVA
 
     WApplication *app = WApplication::instance();
-    std::string appJs = app->javaScriptClass();
 
-    o <<
-      "<!DOCTYPE html>"
-      "<html lang=\"en\" dir=\"ltr\">\n"
-      "<head><title></title>\n"
-      "<script type=\"text/javascript\">\n"
-      "function load() { "
-      """if (window.opener." << appJs << ") {"
-      ""  "var " << appJs << "= window.opener." << appJs << ";"
-      <<  process_->redirected_.createCall() << ";"
-      ""  "window.close();"
-      "}\n"
-      "}\n"
-      "</script></head>"
-      "<body onload=\"load();\"></body></html>";
+    if (app->environment().ajax()) {
+      std::string appJs = app->javaScriptClass();
+      o <<
+        "<!DOCTYPE html>"
+        "<html lang=\"en\" dir=\"ltr\">\n"
+        "<head><title></title>\n"
+        "<script type=\"text/javascript\">\n"
+        "function load() { "
+        """if (window.opener." << appJs << ") {"
+        ""  "var " << appJs << "= window.opener." << appJs << ";"
+        <<  process_->redirected_.createCall() << ";"
+        ""  "window.close();"
+        "}\n"
+        "}\n"
+        "</script></head>"
+        "<body onload=\"load();\"></body></html>";
+    } else {
+      // FIXME: it would be way cleaner if we can send a 302 response, but at
+      //        the moment there's no way to stall sending of status code and headers
+      //        when using continuations
+      std::string redirectTo = app->makeAbsoluteUrl(app->url(process_->startInternalPath_));
+      o <<
+	"<!DOCTYPE html>"
+	"<html lang=\"en\" dir=\"ltr\">\n"
+	"<head><meta http-equiv=\"refresh\" content=\"0; url="
+	<< redirectTo << "\" /></head>\n"
+	"<body><p><a href=\"" << redirectTo
+	<< "\"> Click here to continue</a></p></body></html>";
+    }
   }
 
 private:
@@ -150,6 +169,16 @@ OAuthAccessToken::OAuthAccessToken(const std::string& accessToken,
 				   const std::string& refreshToken)
   : accessToken_(accessToken),
     refreshToken_(refreshToken),
+    expires_(expires)
+{ }
+
+OAuthAccessToken::OAuthAccessToken(const std::string& accessToken,
+				   const WDateTime& expires,
+				   const std::string& refreshToken,
+                                   const std::string& idToken)
+  : accessToken_(accessToken),
+    refreshToken_(refreshToken),
+    idToken_(idToken),
     expires_(expires)
 { }
 
@@ -185,8 +214,10 @@ OAuthProcess::OAuthProcess(const OAuthService& service,
   implementJavaScript(&OAuthProcess::startAuthenticate, js.str());
 #endif
 
+#ifndef WT_TARGET_JAVA
   if (!app->environment().javaScript())
-    app->internalPathChanged().connect(this, &OAuthProcess::handleRedirectPath);
+    authenticated().connect(this, &OAuthProcess::handleAuthComplete);
+#endif // WT_TARGET_JAVA
 }
 
 std::string OAuthProcess::authorizeUrl() const
@@ -244,39 +275,6 @@ void OAuthProcess::connectStartAuthenticate(EventSignalBase &s)
 }
 #endif
 
-void OAuthProcess::handleRedirectPath(const std::string& internalPath)
-{
-  if (internalPath == service_.redirectInternalPath()) {
-    WApplication *app = WApplication::instance();
-
-    const WEnvironment& env = app->environment();
-
-    if (!env.ajax()) {
-      const std::string *stateE = env.getParameter("state");
-      if (!stateE || *stateE != oAuthState_)
-	setError(ERROR_MSG("invalid-state"));
-      else {
-	const std::string *errorE = env.getParameter("error");
-	if (errorE)
-	  setError(ERROR_MSG(+ *errorE));
-	else {
-	  const std::string *codeE = env.getParameter("code");
-	  if (!codeE)
-	    setError(ERROR_MSG("missing-code"));
-	  else {
-	    requestToken(*codeE);
-#ifndef WT_TARGET_JAVA
-	    app->deferRendering();
-#endif
-	  }
-	}
-      }
-
-      onOAuthDone();
-    }
-  }
-}
-
 void OAuthProcess::getIdentity(const OAuthAccessToken& token)
 {
   throw WException("OAuth::Process::Identity(): not specialized");
@@ -297,7 +295,18 @@ void OAuthProcess::onOAuthDone()
     authenticate_ = false;
     getIdentity(token_);
   }
+#ifndef WT_TARGET_JAVA
+  else if (!WApplication::instance()->environment().javaScript())
+    redirectEndpoint_->haveMoreData();
+#endif // WT_TARGET_JAVA
 }
+
+#ifndef WT_TARGET_JAVA
+void OAuthProcess::handleAuthComplete()
+{
+  redirectEndpoint_->haveMoreData();
+}
+#endif // WT_TARGET_JAVA
 
 void OAuthProcess::requestToken(const std::string& authorizationCode)
 {
@@ -307,11 +316,10 @@ void OAuthProcess::requestToken(const std::string& authorizationCode)
    * does
    */
   std::string url = service_.tokenEndpoint();
+  Http::Method m = service_.tokenRequestMethod();
 
   WStringStream ss;
   ss << "grant_type=authorization_code"
-     << "&client_id=" << Wt::Utils::urlEncode(service_.clientId())
-     << "&client_secret=" << Wt::Utils::urlEncode(service_.clientSecret())
      << "&redirect_uri=" 
      << Wt::Utils::urlEncode(service_.generateRedirectEndpoint())
      << "&code=" << authorizationCode;
@@ -320,14 +328,35 @@ void OAuthProcess::requestToken(const std::string& authorizationCode)
   client->setTimeout(15);
   client->done().connect(boost::bind(&OAuthProcess::handleToken, this, _1, _2));
 
-  Http::Method m = service_.tokenRequestMethod();
+  std::string clientId = Wt::Utils::urlEncode(service_.clientId());
+  std::string clientSecret = Wt::Utils::urlEncode(service_.clientSecret());
+
   if (m == Http::Get) {
+    std::vector<Http::Message::Header> headers;
+    if (service_.clientSecretMethod() == HttpAuthorizationBasic) {
+      headers.push_back(Http::Message::Header("Authorization",
+        "Basic " + Wt::Utils::base64Encode(
+	  clientId + ":" + clientSecret, false)));
+    } else if (service_.clientSecretMethod() == PlainUrlParameter) {
+      ss << "&client_id=" << clientId
+	<< "&client_secret=" << clientSecret;
+    }
+
     bool hasQuery = url.find('?') != std::string::npos;
     url += (hasQuery ? '&' : '?') + ss.str();
-    client->get(url);
+
+    client->get(url, headers);
   } else {
     Http::Message post;
     post.setHeader("Content-Type", "application/x-www-form-urlencoded");
+    if (service_.clientSecretMethod() == HttpAuthorizationBasic) {
+      post.setHeader("Authorization",
+		     "Basic " + Wt::Utils::base64Encode(clientId + ":" + clientSecret,
+							false));
+    } else if (service_.clientSecretMethod() == RequestBodyParameter) {
+      ss << "&client_id=" << clientId
+	<< "&client_secret=" << clientSecret;
+    }
     post.addBodyText(ss.str());
     client->post(url, post);
   }
@@ -350,11 +379,7 @@ void OAuthProcess::handleToken(boost::system::error_code err,
     redirectEndpoint_->haveMoreData();
 #endif
   } else {
-#ifndef WT_TARGET_JAVA
-    app->resumeRendering();
-#endif
     onOAuthDone();
-    app->redirect(app->url(startInternalPath_));
   }
 }
 
@@ -374,12 +399,28 @@ OAuthAccessToken OAuthProcess::parseTokenResponse(const Http::Message& response)
      * OAuth 2.0 states this should be application/json
      * but Facebook uses text/plain; charset=UTF-8 body
      */
-    const std::string *type = response.getHeader("Content-Type");
+    const std::string *contenttype = response.getHeader("Content-Type");
 
-    if (type) {
-      if (boost::starts_with(*type, "text/plain; charset=UTF-8"))
-	return parseUrlEncodedToken(response);
-      else if (boost::starts_with(*type, "application/json"))
+    if (contenttype) {
+      std::string mimetype = boost::trim_copy(*contenttype);
+      std::vector<std::string> tokens;
+      boost::split(tokens, mimetype, boost::is_any_of(";"));
+      std::string combinedType; // type/subtype
+      std::string params;
+      if (tokens.size() > 0) {
+	combinedType = tokens[0];
+	boost::trim(combinedType);
+      }
+      if (tokens.size() > 1) {
+	params = tokens[1];
+	boost::trim(params);
+      }
+      if (combinedType == "text/plain") {
+	if (boost::starts_with(params, "charset=UTF-8"))
+	  return parseUrlEncodedToken(response);
+	else
+	  throw TokenError(ERROR_MSG("badresponse"));
+      } else if (combinedType == "application/json")
 	return parseJsonToken(response);
       else
 	throw TokenError(ERROR_MSG("badresponse"));
@@ -453,8 +494,9 @@ OAuthAccessToken OAuthProcess::parseJsonToken(const Http::Message& response)
 	  expires = WDateTime::currentDateTime().addSecs(secs);
 
 	std::string refreshToken = root.get("refreshToken").orIfNull("");
+        std::string idToken = root.get("id_token").orIfNull("");
 
-	return OAuthAccessToken(accessToken, expires, refreshToken);
+	return OAuthAccessToken(accessToken, expires, refreshToken, idToken);
       } catch (std::exception& e) {
 	LOG_ERROR("token response error: " << e.what());
 	throw TokenError(ERROR_MSG("badresponse"));
@@ -489,6 +531,11 @@ struct OAuthService::Impl
       : service_(service)
     { }
 
+    virtual ~RedirectEndpoint()
+    {
+      beingDeleted();
+    }
+
     virtual void handleRequest(const Http::Request& request,
 			       Http::Response& response)
     {
@@ -500,7 +547,7 @@ struct OAuthService::Impl
 	if (!redirectUrl.empty()) {
 	  bool hasQuery = redirectUrl.find('?') != std::string::npos;
 	  redirectUrl += (hasQuery ? '&' : '?');
-	  redirectUrl += "&state=" + Wt::Utils::urlEncode(*stateE);
+	  redirectUrl += "state=" + Wt::Utils::urlEncode(*stateE);
 
 	  const std::string *errorE = request.getParameter("error");
 	  if (errorE)
@@ -559,11 +606,9 @@ std::string OAuthService::generateRedirectEndpoint() const
 
 std::string OAuthService::encodeState(const std::string& url) const
 {
-  std::string msg = impl_->secret_ + url;
+  std::string hash(Wt::Utils::base64Encode(Wt::Utils::hmac_sha1(url, impl_->secret_)));
 
-  std::string hash(Wt::Utils::sha1(msg));
-  
-  std::string b = Wt::Utils::base64Encode(hash + "|" + url);
+  std::string b = Wt::Utils::base64Encode(hash + "|" + url, false);
 
   /* Variant of base64 encoding which is resistant to broken OAuth2 peers
    * that do not properly re-encode the state */
@@ -655,6 +700,11 @@ void OAuthService::configureRedirectEndpoint() const
       impl_->redirectResource_ = r;
     }
   }
+}
+
+std::string OAuthService::userInfoEndpoint() const
+{
+  throw WException("OAuth::Process::userInfoEndpoint(): not specialized");
 }
 
 std::string OAuthService::configurationProperty(const std::string& property)

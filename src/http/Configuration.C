@@ -57,6 +57,7 @@ Configuration::Configuration(Wt::WLogger& logger, bool silent)
     sslVerifyDepth_(1),
     sslCaCertificates_(),
     sslCipherList_(),
+    sslPreferServerCiphers_(false),
     sessionIdPrefix_(),
     accessLog_(),
     parentPort_(-1),
@@ -99,6 +100,14 @@ void Configuration::createOptions(po::options_description& options,
      "are within a deployment path), after a ';' \n\n"
      "e.g. --docroot=\".;/favicon.ico,/resources,/style\"\n")
 
+    ("resources-dir",
+     po::value<std::string>(&resourcesDir_)->default_value(resourcesDir_),
+     "path to the Wt resources folder. By default, Wt will look for its resources "
+     "in the resources subfolder of the docroot (see --docroot). If a file is not found "
+     "in that resources folder, this folder will be checked instead as a fallback. "
+     "If this option is omitted, then Wt will not use a fallback resources folder."
+     )
+
     ("approot",
      po::value<std::string>(&appRoot_)->default_value(appRoot_),
      "application root for private support files; if unspecified, the value "
@@ -123,7 +132,7 @@ void Configuration::createOptions(po::options_description& options,
 
     ("session-id-prefix",
      po::value<std::string>(&sessionIdPrefix_)->default_value(sessionIdPrefix_),
-     "prefix for session-id's (overrides wt_config.xml setting)")
+     "prefix for session IDs (overrides wt_config.xml setting)")
 
     ("pid-file,p",
      po::value<std::string>(&pidPath_)->default_value(pidPath_),
@@ -149,7 +158,8 @@ void Configuration::createOptions(po::options_description& options,
   po::options_description http("HTTP/WebSocket server options");
   http.add_options()
     ("http-address", po::value<std::string>(),
-     "IPv4 (e.g. 0.0.0.0) or IPv6 Address (e.g. 0::0)")
+     "IPv4 (e.g. 0.0.0.0) or IPv6 Address (e.g. 0::0). You must specify either "
+     "this option or --https-address (or both)")
     ("http-port", po::value<std::string>(&httpPort_)->default_value(httpPort_),
      "HTTP port (e.g. 80)")
     ;
@@ -157,7 +167,8 @@ void Configuration::createOptions(po::options_description& options,
   po::options_description https("HTTPS/Secure WebSocket server options");
   https.add_options()
     ("https-address", po::value<std::string>(),
-     "IPv4 (e.g. 0.0.0.0) or IPv6 Address (e.g. 0::0)")
+     "IPv4 (e.g. 0.0.0.0) or IPv6 Address (e.g. 0::0). You must specify either "
+     "this option or --http-address (or both)")
     ("https-port",
      po::value<std::string>(&httpsPort_)->default_value(httpsPort_),
      "HTTPS port (e.g. 443)")
@@ -198,6 +209,12 @@ void Configuration::createOptions(po::options_description& options,
      "layer, so see openssl for the proper syntax. When empty, the default "
      "acceptable cipher list will be used. Example cipher list string: "
      "\"TLSv1+HIGH:!SSLv2\"\n")
+    ("ssl-prefer-server-ciphers",
+     po::value<bool>(&sslPreferServerCiphers_)
+       ->default_value(sslPreferServerCiphers_),
+     "By default, the client's preference is used for determining the cipher "
+     "that is choosen during a SSL or TLS handshake. By enabling this option, "
+     "the server's preference will be used." )
     ;
 
   po::options_description hidden("Hidden options");

@@ -12,6 +12,7 @@
 
 namespace Wt {
 
+class WPainterPath;
 class WPointF;
 class WRectF;
 
@@ -359,6 +360,8 @@ public:
    * \sa isIdentity()
    */
   static const WTransform Identity;
+
+  bool closeTo(const WTransform& other) const;
 
   virtual std::string jsValue() const WT_CXX11ONLY(override) ;
 

@@ -246,6 +246,8 @@ WAbstractItemView::WAbstractItemView(WContainerWidget *parent)
     mouseWentDown_(this),
     mouseWentUp_(this),
     touchStart_(this),
+    touchStarted_(this),
+    touchEnded_(this),
     selectionChanged_(this),
     pageChanged_(this),
     editTriggers_(DoubleClicked),
@@ -294,6 +296,8 @@ WAbstractItemView::~WAbstractItemView()
 void WAbstractItemView::setObjectName(const std::string& name)
 {
   WCompositeWidget::setObjectName(name);
+
+  bindObjJS(resizeHandleMDownJS_, "resizeHandleMDown");
 
   headerHeightRule_->setSelector("#" + id() + " .headerrh");
 
@@ -1358,9 +1362,10 @@ void WAbstractItemView::expandColumn(int columnid)
 void WAbstractItemView::handleClick(const WModelIndex& index,
 				    const WMouseEvent& event)
 {
-  if (dragEnabled_ && delayedClearAndSelectIndex_.isValid() &&
-      event.dragDelta().x < 4 && event.dragDelta().y < 4) {
-    select(delayedClearAndSelectIndex_, ClearAndSelect);
+  if (dragEnabled_ && delayedClearAndSelectIndex_.isValid()) {
+    Coordinates delta = event.dragDelta();
+    if ((delta.x < 0 ? -delta.x : delta.x) < 4 && (delta.y < 0 ? -delta.y : delta.y) < 4)
+      select(delayedClearAndSelectIndex_, ClearAndSelect);
   }
 
   bool doEdit = index.isValid() && (editTriggers() & SingleClicked);
@@ -1408,8 +1413,8 @@ void WAbstractItemView::handleMouseUp(const WModelIndex& index,
   mouseWentUp_.emit(index, event);
 }
 
-void WAbstractItemView::handleTouchStart(const std::vector<WModelIndex>& indices,
-					   const WTouchEvent& event)
+void WAbstractItemView::handleTouchSelect(const std::vector<WModelIndex>& indices,
+                                          const WTouchEvent& event)
 {
   const WModelIndex& index = indices[0];
   touchRegistered_ = true;
@@ -1427,6 +1432,24 @@ void WAbstractItemView::handleTouchStart(const std::vector<WModelIndex>& indices
   }
 
   touchStart_.emit(index, event);
+}
+
+void WAbstractItemView::handleTouchStart(const std::vector<WModelIndex>& indices,
+					   const WTouchEvent& event)
+{
+  touchStarted_.emit(indices, event);
+}
+
+void WAbstractItemView::handleTouchMove(const std::vector<WModelIndex>& indices,
+                                        const WTouchEvent& event)
+{
+  touchMoved_.emit(indices, event);
+}
+
+void WAbstractItemView::handleTouchEnd(const std::vector<WModelIndex>& indices,
+				       const WTouchEvent& event)
+{
+  touchEnded_.emit(indices, event);
 }
 
 void WAbstractItemView::setEditTriggers(WFlags<EditTrigger> editTriggers)

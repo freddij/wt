@@ -1385,7 +1385,7 @@ void WTreeView::render(WFlags<RenderFlag> flags)
   if (flags & RenderFull) {
     defineJavaScript();
 
-    if (!itemTouchEvent_.isConnected()) 
+    if (!itemTouchEvent_.isConnected())
       itemTouchEvent_.connect(this, &WTreeView::onItemTouchEvent);
 
     if (!itemEvent_.isConnected()) {
@@ -1631,16 +1631,19 @@ void WTreeView::onItemEvent(std::string nodeAndColumnId, std::string type,
   }
 }
 
-void WTreeView::onItemTouchEvent(std::string nodeAndColumnId, std::string type,
-				 std::string extra1, std::string extra2, WTouchEvent event)
+void WTreeView::onItemTouchEvent(std::string nodeAndColumnId, std::string type, WTouchEvent event)
 {
   // nodeId and columnId are combined because WSignal needed to be changed
   // since MSVS 2012 does not support >5 arguments in std::bind()
   std::vector<WModelIndex> index;
   index.push_back(calculateModelIndex(nodeAndColumnId));
 
-  if (type == "touchstart")
+  if (type == "touchselect")
+    handleTouchSelect(index, event);
+  else if (type == "touchstart")
     handleTouchStart(index, event);
+  else if (type == "touchend")
+    handleTouchEnd(index, event);
 }
 
 WModelIndex WTreeView::calculateModelIndex(std::string nodeAndColumnId)
@@ -2261,33 +2264,17 @@ void WTreeView::modelDataChanged(const WModelIndex& topLeft,
     return;
   
   WModelIndex parent = topLeft.parent();  
-  WWidget *parentWidget = widgetForIndex(parent);
+  WTreeViewNode *parentNode = nodeForIndex(parent);
 
-  if (parentWidget) {
-    WTreeViewNode *parentNode = dynamic_cast<WTreeViewNode *>(parentWidget);
+  if (parentNode && parentNode->childrenLoaded()) {
+    for (int r = topLeft.row(); r <= bottomRight.row(); ++r) {
+      WModelIndex index = model()->index(r, 0, parent);
 
-    if (parentNode) {
-      if (parentNode->childrenLoaded()) {
-	for (int r = topLeft.row(); r <= bottomRight.row(); ++r) {
-	  WModelIndex index = model()->index(r, 0, parent);
+      WTreeViewNode *n = nodeForIndex(index);
 
-	  WTreeViewNode *n
-	    = dynamic_cast<WTreeViewNode *>(widgetForIndex(index));
-
-	  if (n)
-	    n->update(topLeft.column(), bottomRight.column());
-	}
-      } /* else:
-	   children not loaded -- so we do not need to bother
-	 */
-    } /* else:
-	 parentWidget is a spacer -- we do not need to bother
-       */
-  } else {
-    /*
-      parent is not displayed
-      FIXME: but it could still be rendered, yet (somehow) not expanded ?
-    */
+      if (n)
+	n->update(topLeft.column(), bottomRight.column());
+    }
   }
 }
 
@@ -2811,7 +2798,7 @@ WTreeViewNode *WTreeView::nodeForIndex(const WModelIndex& index) const
   if (index == rootIndex())
     return rootNode_;
   else {
-    WModelIndex column0Index = model()->index(index.row(), 0, index.parent());
+    WModelIndex column0Index = index.column() == 0 ? index : model()->index(index.row(), 0, index.parent());
     NodeMap::const_iterator i = renderedNodes_.find(column0Index);
     return i != renderedNodes_.end() ? i->second : 0;
   }
@@ -2861,8 +2848,11 @@ WAbstractItemView::ColumnInfo WTreeView::createColumnInfo(int column) const
     ci.width = WLength::Auto;
     ci.styleRule->templateWidget()->resize(WLength::Auto, WLength::Auto);
 
-    if (c0StyleRule_)
+    if (c0StyleRule_) {
       c0StyleRule_->setSelector("#" + id() + " li ." + ci.styleClass());
+      wApp->styleSheet().removeRule(c0StyleRule_);
+      wApp->styleSheet().addRule(c0StyleRule_); // needed on rerender
+    }
   }
 
   return ci;

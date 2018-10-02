@@ -32,6 +32,8 @@
 #include "Wt/WTabWidget"
 #include "Wt/WText"
 
+#include "WebUtils.h"
+
 #include "DomElement.h"
 
 #ifndef WT_DEBUG_JS
@@ -41,6 +43,18 @@
 namespace skeletons {
   extern const char * BootstrapTheme_xml1;
   extern const char * Bootstrap3Theme_xml1;
+}
+
+namespace {
+  static const std::string btnClasses[] = {
+    "btn-default",
+    "btn-primary",
+    "btn-success",
+    "btn-info",
+    "btn-warning",
+    "btn-danger",
+    "btn-link"
+  };
 }
 
 namespace Wt {
@@ -102,6 +116,9 @@ std::vector<WCssStyleSheet> WBootstrapTheme::styleSheets() const
 void WBootstrapTheme::apply(WWidget *widget, WWidget *child, int widgetRole)
   const
 {
+  if (!widget->isThemeStyleEnabled())
+    return;
+
   switch (widgetRole) {
   case MenuItemIconRole:
     child->addStyleClass("Wt-icon");
@@ -112,11 +129,11 @@ void WBootstrapTheme::apply(WWidget *widget, WWidget *child, int widgetRole)
     break;
   case MenuItemCloseRole:
     {
-      WText *txt = dynamic_cast<WText *>(child);
-      if (txt)
-        txt->setText("<button class='close'>&times;</button>");
+      child->addStyleClass("close");
+      WText *t = dynamic_cast<WText *>(child);
+      t->setText("&times;");
+      break;
     }
-    break;
   case DialogContent:
     if (version_ == Version3)
       child->addStyleClass("modal-content");
@@ -125,7 +142,7 @@ void WBootstrapTheme::apply(WWidget *widget, WWidget *child, int widgetRole)
     if (version_ == Version3)
       child->addStyleClass("modal-backdrop in");
     else
-      child->addStyleClass("modal-backdrop");
+      child->addStyleClass("modal-backdrop Wt-bootstrap2");
     break;
   case DialogTitleBarRole:
        child->addStyleClass("modal-header");
@@ -204,6 +221,9 @@ void WBootstrapTheme::apply(WWidget *widget, WWidget *child, int widgetRole)
 void WBootstrapTheme::apply(WWidget *widget, DomElement& element,
 			    int elementRole) const
 {
+  if (!widget->isThemeStyleEnabled())
+    return;
+
   bool creating = element.mode() == DomElement::ModeCreate;
 
   {
@@ -217,9 +237,13 @@ void WBootstrapTheme::apply(WWidget *widget, DomElement& element,
 
   switch (element.type()) {
 
-  case DomElement_A:
+  case DomElement_A: {
     if (creating && dynamic_cast<WPushButton *>(widget))
-      element.addPropertyWord(PropertyClass, classBtn());
+      element.addPropertyWord(PropertyClass, classBtn(widget));
+
+    WPushButton *btn = dynamic_cast<WPushButton *>(widget);
+    if (creating && btn && btn->isDefault())
+      element.addPropertyWord(PropertyClass, "btn-primary");
 
     if (element.getProperty(PropertyClass).find("dropdown-toggle")
 	!= std::string::npos) {
@@ -231,10 +255,11 @@ void WBootstrapTheme::apply(WWidget *widget, DomElement& element,
       }
     }
     break;
+  }
 
   case DomElement_BUTTON: {
-    if (creating)
-      element.addPropertyWord(PropertyClass, classBtn());
+    if (creating && !widget->hasStyleClass("list-group-item"))
+      element.addPropertyWord(PropertyClass, classBtn(widget));
 
     WPushButton *button = dynamic_cast<WPushButton *>(widget);
     if (button) {
@@ -388,6 +413,7 @@ void WBootstrapTheme::apply(WWidget *widget, DomElement& element,
         element.addPropertyWord(PropertyClass, "Wt-dateedit");
         return;
       }
+
       WTimeEdit *timeEdit = dynamic_cast<WTimeEdit *>(widget);
       if (timeEdit) {
         element.addPropertyWord(PropertyClass, "Wt-timeedit");
@@ -537,9 +563,11 @@ void WBootstrapTheme::setFormControlStyleEnabled(bool enabled)
   formControlStyle_ = enabled;
 }
 
-std::string WBootstrapTheme::classBtn() const
+std::string WBootstrapTheme::classBtn(WWidget *widget) const
 {
-  return version_ == Version2 ? "btn" : "btn btn-default";
+  Wt::WPushButton *button = dynamic_cast<Wt::WPushButton *>(widget);
+  return (version_ == Version2 || hasButtonStyleClass(widget)
+          || (button && button->isDefault())) ? "btn" : "btn btn-default";
 }
 
 std::string WBootstrapTheme::classBar() const
@@ -610,6 +638,20 @@ std::string WBootstrapTheme::classNavbarBtn() const
 std::string WBootstrapTheme::classNavbarMenu() const
 {
   return version_ == Version2 ? "navbar-nav" : "navbar-nav";
+}
+
+bool WBootstrapTheme::hasButtonStyleClass(WWidget* widget) const
+{
+#ifndef WT_TARGET_JAVA
+  int size = sizeof(btnClasses)/sizeof(std::string);
+#else
+  int size = Utils::sizeofFunction(btnClasses);
+#endif
+  for (int i = 0; i < size; ++i) {
+    if (widget->hasStyleClass(btnClasses[i]))
+      return true;
+  }
+  return false;
 }
 
 }

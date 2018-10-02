@@ -518,15 +518,27 @@ std::string WebSession::fixRelativeUrl(const std::string& url) const
   }
 
   if (!isAbsoluteUrl(applicationUrl_)) {
-    if (url.empty() || url[0] == '/')
+    if (!url.empty() && url[0] == '/')
       return url;
     else if (!env_->publicDeploymentPath_.empty()) {
       std::string dp = env_->publicDeploymentPath_;
-      if (url[0] != '?') {
-	std::size_t s = dp.rfind('/');
-	dp = dp.substr(0, s + 1);
+
+      if (url.empty())
+        return dp;
+      else if (url[0] == '?')
+        return dp + url;
+      else {
+        std::size_t s = dp.rfind('/');
+        std::string parentDir = dp.substr(0, s + 1);
+        if (url[0] == '.' && (url.size() == 1 || url[1] == '?' || url[1] == '#' || url[1] == ';'))
+          return parentDir + url.substr(1);
+        else if (url.size() >= 2 && url[0] == '.' && url[1] == '/') {
+          // Note: deployment path is guaranteed to start with /
+          //       WEnvironment checks this!
+          return parentDir + url.substr(2);
+        } else
+          return parentDir + url;
       }
-      return dp + url;
     } else {
       /*
        * The public deployment path may lack if:
@@ -546,7 +558,10 @@ std::string WebSession::fixRelativeUrl(const std::string& url) const
 	    rel += "../";
 	}
 
-	return rel + url;
+        if (url.empty())
+          return rel + applicationName_;
+        else
+          return rel + url;
       }
     }
   } else
@@ -630,7 +645,10 @@ std::string WebSession::appendInternalPath(const std::string& baseUrl,
 {
   if (internalPath.empty() || internalPath == "/")
     if (baseUrl.empty())
-      return ".";
+      if (applicationName_.empty())
+	return ".";
+      else
+        return applicationName_;
     else
       return baseUrl;
   else {
@@ -1257,22 +1275,52 @@ void WebSession::handleRequest(Handler& handler)
 
   const std::string *wtdE = request.getParameter("wtd");
 
-  /*
-   * Cross-Origin Resource Sharing
-   */
+  Configuration& conf = controller_->configuration();
+
   const char *origin = request.headerValue("Origin");
-  if (origin) {
+  if (request.isWebSocketRequest()) {
+    std::string trustedOrigin = env_->urlScheme() + "://" + env_->hostName();
+    // Allow new WebSocket connection:
+    // - Origin is OK if:
+    //  - It is the same as the current host
+    //  - or we are using WidgetSet mode and the origin is allowed
+    // - Wt session id matches
+    if (origin && (trustedOrigin == origin ||
+                   (type() == WidgetSet && conf.isAllowedOrigin(origin))) &&
+        wtdE && *wtdE == sessionId_) {
+      // OK
+    } else {
+      // Not OK
+      if (origin) {
+        LOG_ERROR("WebSocket request refused: Origin '" << origin <<
+            "' not allowed (trusted origin is '" << trustedOrigin << "')");
+      } else {
+        LOG_ERROR("WebSocket request refused: missing Origin");
+      }
+      handler.response()->setStatus(403);
+      handler.flushResponse();
+      return;
+    }
+  } else if (origin) {
+    /*
+     * CORS (Cross-Origin Resource Sharing)
+     */
     /*
      * Do we allow this XMLHttpRequest or WebSocketRequest?
      *
-     * Only if it's proven itself by a correct (existing) wtd, and thus
-     * not for a new session.
+     * Only if all of the conditions below are met:
+     *  - this is a WidgetSet sessions
+     *  - the Origin is allowed according to the configuration
+     *  - this is a new session or the session id matches
      */
-    if ((wtdE && *wtdE == sessionId_) || state_ == JustCreated) {
+    if (type() == WidgetSet &&
+        ((wtdE && *wtdE == sessionId_) || state_ == JustCreated) &&
+        conf.isAllowedOrigin(origin)) {
       if (isEqual(origin, "null"))
 	origin = "*";
       handler.response()->addHeader("Access-Control-Allow-Origin", origin);
       handler.response()->addHeader("Access-Control-Allow-Credentials", "true");
+      handler.response()->addHeader("Vary", "Origin");
 
       if (isEqual(request.requestMethod(), "OPTIONS")) {
 	WebResponse *response = handler.response();
@@ -1280,28 +1328,17 @@ void WebSession::handleRequest(Handler& handler)
 	response->setStatus(200);
 	response->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
 	response->addHeader("Access-Control-Max-Age", "1728000");
-	handler.flushResponse();
+        const char *requestHeaders = request.headerValue("Access-Control-Request-Headers");
+        if (requestHeaders)
+          response->addHeader("Access-Control-Allow-Headers", requestHeaders);
+        handler.flushResponse();
 
 	return;
       }
-    } else
-      if (request.isWebSocketRequest()) {
-	/*
-	 * FIXME: not so for new WebSocket protocol versions
-	 *
-	 * We are already passed the websocket hand-shake so it is too late
-	 * to indicate it by omitting the Access-Control-Allow-Origin header.
-	 *
-	 * But we close the socket nevertheless.
-	 */
-	handler.flushResponse();
-	return;
-      }
+    }
   }
 
   const std::string *requestE = request.getParameter("request");
-
-  Configuration& conf = controller_->configuration();
 
 
   if (requestE && *requestE == "ws" && !request.isWebSocketRequest()) {
@@ -1424,10 +1461,10 @@ void WebSession::handleRequest(Handler& handler)
 	  /*
 	   * We can simply bootstrap.
 	   */
-	  try {
-	    std::string internalPath = env_->getCookie("WtInternalPath");
-	    env_->setInternalPath(internalPath);
-	  } catch (std::exception& e) {
+	  {
+	    const std::string *internalPath = env_->getCookieValue("WtInternalPath");
+	    if (internalPath)
+	      env_->setInternalPath(*internalPath);
 	  }
 
 	  bool forcePlain
@@ -1901,7 +1938,8 @@ void WebSession::handleWebSocketMessage(boost::weak_ptr<WebSession> session,
 	bool closing = message->contentLength() == 0;
 
 	if (!closing) {
-	  CgiParser cgi(lock->controller_->configuration().maxRequestSize());
+	  CgiParser cgi(lock->controller_->configuration().maxRequestSize(),
+			lock->controller_->configuration().maxFormDataSize());
 	  try {
 	    cgi.parse(*message, CgiParser::ReadDefault);
 	  } catch (std::exception& e) {
@@ -2167,18 +2205,32 @@ void WebSession::notify(const WEvent& event)
     try {
       renderer_.serveResponse(*event.impl_.response);
     } catch (std::exception& e) {
-      LOG_ERROR("Exception in WApplication::notify()" << e.what());
+      LOG_ERROR("Exception in WApplication::notify(): " << e.what());
+
+#ifdef WT_TARGET_JAVA
+      e.printStackTrace();
+#endif // WT_TARGET_JAVA
     } catch (...) {
+      LOG_ERROR("Exception in WApplication::notify()");
     }
     return;
   }
 
   if (event.impl_.function) {
-    WT_CALL_FUNCTION(event.impl_.function);
+    try {
+      WT_CALL_FUNCTION(event.impl_.function);
 
-    if (event.impl_.handler->request())
-      render(*event.impl_.handler);
+      if (event.impl_.handler->request())
+	render(*event.impl_.handler);
+    } catch (std::exception& e) {
+      LOG_ERROR("Exception in WApplication::notify(): " << e.what());
 
+#ifdef WT_TARGET_JAVA
+      e.printStackTrace();
+#endif // WT_TARGET_JAVA
+    } catch (...) {
+      LOG_ERROR("Exception in WApplication::notify()");
+    }
     return;
   }
 
@@ -2212,7 +2264,15 @@ void WebSession::notify(const WEvent& event)
    * Capture JavaScript error server-side.
    */
   if (requestE && *requestE == "jserror") {
-    app_->handleJavaScriptError(*request.getParameter("err"));
+    const std::string *err = request.getParameter("err");
+    if (err) {
+      app_->handleJavaScriptError(*err);
+    } else {
+      // Forming a custom request with missing err parameter should not crash the server,
+      // but our JavaScript should not produce these requests.
+      LOG_ERROR("malformed jserror request: missing err parameter");
+      app_->handleJavaScriptError("unknown error");
+    }
     renderer_.setJSSynced(false);
     render(handler);
     return;
@@ -2392,9 +2452,11 @@ void WebSession::notify(const WEvent& event)
 	  bool invalidAckId = env_->ajax() 
 	    && !request.isWebSocketMessage();
 
+	  WebRenderer::AckState ackState = WebRenderer::CorrectAck;
 	  if (invalidAckId && ackIdE) {
 	    try {
-	      if (renderer_.ackUpdate(boost::lexical_cast<int>(*ackIdE)))
+	      ackState = renderer_.ackUpdate(boost::lexical_cast<int>(*ackIdE));
+	      if (ackState != WebRenderer::BadAck)
 		invalidAckId = false;
 	    } catch (const boost::bad_lexical_cast& e) {
 	    }
@@ -2409,6 +2471,14 @@ void WebSession::notify(const WEvent& event)
 	    return;
 	  }
 
+	  if (*signalE == "poll" &&
+	      ackState != WebRenderer::CorrectAck &&
+	      renderer_.jsSynced()) {
+	    LOG_DEBUG("Ignoring poll with incorrect ack -- was rescheduled in browser?");
+	    handler.flushResponse();
+	    return;
+	  }
+	  
 	  /*
 	   * In case we are not using websocket but long polling, the client
 	   * aborts the previous poll request to indicate a client-side event.
@@ -2431,9 +2501,9 @@ void WebSession::notify(const WEvent& event)
 	     * for a push update. We wait at most twice as long as the client
 	     * will renew this poll connection.
 	     */
-	    if (!WebController::isAsyncSupported()) {
+	    if (!WebController::isAsyncSupported() && renderer_.jsSynced()) {
 	      updatesPendingEvent_.notify_one();
-	      if (!updatesPending_) {
+              if (!updatesPending_) {
 #ifndef WT_TARGET_JAVA
 		updatesPendingEvent_.wait(handler.lock());
 #else
@@ -2443,7 +2513,7 @@ void WebSession::notify(const WEvent& event)
 		} catch (InterruptedException& e) { }
 #endif // WT_TARGET_JAVA
 	      }
-	      if (!updatesPending_) {
+              if (!updatesPending_) {
 		handler.flushResponse();
 		return;
 	      }
@@ -2451,7 +2521,7 @@ void WebSession::notify(const WEvent& event)
 #endif // WT_BOOST_THREADS
 
 	    // LOG_DEBUG("poll: " << updatesPending_ << ", " << (asyncResponse_ ? "async" : "no async"));
-	    if (!updatesPending_) {
+            if (!updatesPending_ && renderer_.jsSynced()) {
 	      /*
 	       * If we are ignoring many poll requests (because we are
 	       * assuming to have a websocket), we will need to assume
@@ -2798,9 +2868,13 @@ void WebSession::propagateFormValues(const WEvent& e, const std::string& se)
     std::string formName = i->first;
     WObject *obj = i->second;
 
-    if (!request.postDataExceeded())
+    if (!request.postDataExceeded()) {
+      WWidget *w = dynamic_cast<WWidget*>(obj);
+      // FIXME: reenable isVisible() check once we've fixed all of the regressions
+      if (w && (!w->isEnabled()/* || !w->isVisible()*/))
+	continue; // Do not update form data of a disabled or invisible widget
       obj->setFormData(getFormData(request, se + formName));
-    else
+    } else
       obj->setRequestTooLarge(request.postDataExceeded());
   }
 }
@@ -2914,16 +2988,19 @@ void WebSession::notifySignal(const WEvent& e)
 
       handler.nextSignal = i + 1;
 
+      const std::string *evAckIdE = request.getParameter(se + "evAckId");
+      bool checkWasStubbed = evAckIdE &&
+          boost::lexical_cast<int>(*evAckIdE) <= renderer_.scriptId() + 1;
+
       if (*signalE == "hash") {
 	const std::string *hashE = request.getParameter(se + "_");
 	if (hashE) {
 	  changeInternalPath(*hashE, handler.response());
-	  app_->doJavaScript(WT_CLASS ".scrollIntoView("
-			     + WWebWidget::jsStringLiteral(*hashE) + ");");
+	  app_->doJavaScript(WT_CLASS ".scrollHistory();");
 	} else
 	  changeInternalPath("", handler.response());
       } else {
-	for (unsigned k = 0; k < 3; ++k) {
+        for (unsigned k = 0; k < 4; ++k) {
 	  SignalKind kind = (SignalKind)k;
 
 	  if (kind == AutoLearnStateless && request.postDataExceeded())
@@ -2941,7 +3018,7 @@ void WebSession::notifySignal(const WEvent& e)
 	  } else
 	    s = decodeSignal(*signalE, k == 0);
 
-	  processSignal(s, se, request, kind);
+          processSignal(s, se, request, kind, checkWasStubbed);
 
 	  if (kind == LearnedStateless && discardStateless)
 	    renderer_.discardChanges();
@@ -2954,14 +3031,20 @@ void WebSession::notifySignal(const WEvent& e)
 }
 
 void WebSession::processSignal(EventSignalBase *s, const std::string& se,
-			       const WebRequest& request, SignalKind kind)
+                               const WebRequest& request, SignalKind kind,
+                               bool checkWasStubbed)
 {
   if (!s)
     return;
 
   switch (kind) {
   case LearnedStateless:
-    s->processLearnedStateless();
+    s->processLearnedStateless(checkWasStubbed);
+    break;
+  case StubbedStateless:
+    if (checkWasStubbed) {
+      s->processStubbedStateless();
+    }
     break;
   case AutoLearnStateless:
     s->processAutoLearnStateless(&renderer_);

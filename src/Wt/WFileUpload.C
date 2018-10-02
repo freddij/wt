@@ -34,6 +34,11 @@ public:
       fileUpload_(fileUpload)
   { }
 
+  virtual ~WFileUploadResource()
+  {
+    beingDeleted();
+  }
+
 protected:
   virtual void handleRequest(const Http::Request& request,
 			     Http::Response& response) {
@@ -131,6 +136,8 @@ WFileUpload::WFileUpload(WContainerWidget *parent)
     textSize_(20),
     fileTooLarge_(this, "fileTooLarge"),
     dataReceived_(this),
+    displayWidget_(0),
+    displayWidgetRedirect_(this),
     progressBar_(0)
 {
   setInline(true);
@@ -146,6 +153,7 @@ void WFileUpload::create()
     fileUploadTarget_ = new WFileUploadResource(this);
     fileUploadTarget_->setUploadProgress(true);
     fileUploadTarget_->dataReceived().connect(this, &WFileUpload::onData);
+    fileUploadTarget_->dataExceeded().connect(this, &WFileUpload::onDataExceeded);
 
     setJavaScriptMember(WT_RESIZE_JS,
 			"function(self, w, h) {"
@@ -156,6 +164,8 @@ void WFileUpload::create()
     fileUploadTarget_ = 0;
 
   setFormObject(!fileUploadTarget_);
+
+  displayWidgetRedirect_.setJavaScript(displayWidgetClickJS());
 
   uploaded().connect(this, &WFileUpload::onUploaded);
   fileTooLarge().connect(this, &WFileUpload::onUploaded);
@@ -179,32 +189,26 @@ void WFileUpload::onData(::uint64_t current, ::uint64_t total)
 {
   dataReceived_.emit(current, total);
 
-  WebSession::Handler *h = WebSession::Handler::instance();
-
-  ::int64_t dataExceeded = h->request()->postDataExceeded();
-  h->setRequest(0, 0); // so that triggerUpdate() will work
-
-  if (dataExceeded) {
-    doJavaScript(WT_CLASS ".$('if" + id() + "').src='"
-                  + fileUploadTarget_->url() + "';");
-    if (flags_.test(BIT_UPLOADING)) {
-      flags_.reset(BIT_UPLOADING);
-      handleFileTooLarge(dataExceeded);
-
-      WApplication *app = WApplication::instance();
-      app->triggerUpdate();
-      app->enableUpdates(false);
-    }
-
-    return;
-  }
-
   if (progressBar_ && flags_.test(BIT_UPLOADING)) {
     progressBar_->setRange(0, (double)total);
     progressBar_->setValue((double)current);
 
     WApplication *app = WApplication::instance();
     app->triggerUpdate();
+  }
+}
+
+void WFileUpload::onDataExceeded(::uint64_t dataExceeded)
+{
+  doJavaScript(WT_CLASS ".$('if" + id() + "').src='"
+	       + fileUploadTarget_->url() + "';");
+  if (flags_.test(BIT_UPLOADING)) {
+    flags_.reset(BIT_UPLOADING);
+    handleFileTooLarge(dataExceeded);
+
+    WApplication *app = WApplication::instance();
+    app->triggerUpdate();
+    app->enableUpdates(false);
   }
 }
 
@@ -235,6 +239,40 @@ void WFileUpload::setProgressBar(WProgressBar *bar)
     }
   }
 }
+
+void WFileUpload::setDisplayWidget(WInteractWidget *widget) {
+  if (displayWidget_ || !widget)
+    return;
+
+  displayWidget_ = widget;
+  flags_.set(BIT_USE_DISPLAY_WIDGET, true);
+  repaint();
+}
+
+std::string WFileUpload::displayWidgetClickJS() {
+  return std::string() +
+    "function(sender, event) {" +
+    "  function redirectClick(el) {" +
+    "    if (el && el.tagName && el.tagName.toLowerCase() === 'input') {" +
+    "      el.click();" +
+    "      return true;" +
+    "    } else {" +
+    "      return false;" +
+    "    }"  +
+    "  };" +
+    "  " +
+    "  var ok = redirectClick(" + jsRef() + ");" +
+    "  if (!ok) {" +
+    "    var children = " + jsRef() + ".children;" +
+    "    for (var i=0; i < children.length; i++) {" +
+    "      if (redirectClick(children[i])) {" +
+    "        return;" +
+    "      }" +
+    "    }" +
+    "  }" +
+    "}";
+}
+
 
 EventSignal<>& WFileUpload::uploaded()
 {
@@ -311,6 +349,11 @@ void WFileUpload::updateDom(DomElement& element, bool all)
       && containsProgress && !progressBar_->isRendered())
     element.addChild(progressBar_->createSDomElement(WApplication::instance()));
 
+  if (fileUploadTarget_ && flags_.test(BIT_USE_DISPLAY_WIDGET)) {
+    addStyleClass("Wt-fileupload-hidden");
+    displayWidget_->clicked().connect(displayWidgetRedirect_);
+  }
+  
   // upload() + disable() does not work. -- fix after this release,
   // change order of javaScript_ and properties rendering in DomElement
 
@@ -369,6 +412,7 @@ void WFileUpload::updateDom(DomElement& element, bool all)
 
   flags_.reset(BIT_ENABLED_CHANGED);
   flags_.reset(BIT_ACCEPT_ATTRIBUTE_CHANGED);
+  flags_.reset(BIT_USE_DISPLAY_WIDGET);
 
   EventSignal<> *change = voidEventSignal(CHANGE_SIGNAL, false);
   if (change && change->needsUpdate(all)) {
@@ -466,9 +510,9 @@ DomElement *WFileUpload::createDomElement(WApplication *app)
 
     form->addChild(input);
 
-    doJavaScript("var a" + id() + "=" + jsRef() + ".action;"
+    doJavaScript("var a =" + jsRef() + ".action;"
 		 "var f = function(event) {"
-		 """if (a" + id() + ".indexOf(event.origin) === 0) {"
+		 """if (a.indexOf(event.origin) === 0) {"
 		 ""  "var data = JSON.parse(event.data);"
      ""  "if (data.type === 'upload') {"
      ""    "if (data.fu == '" + id() + "')"

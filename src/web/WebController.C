@@ -46,27 +46,6 @@
 
 #include <csignal>
 
-namespace {
-
-bool matchesPath(const std::string& path, const std::string& prefix)
-{
-  if (boost::starts_with(path, prefix)) {
-    unsigned prefixLength = prefix.length();
-
-    if (path.length() > prefixLength) {
-      char next = path[prefixLength];
-
-      if (next == '/')
-	return true; 
-    } else
-      return true;
-  }
-
-  return false;
-}
-
-}
-
 namespace Wt {
 
 LOGGER("WebController");
@@ -450,7 +429,7 @@ bool WebController::requestDataReceived(WebRequest *request,
     lock.unlock();
 #endif // WT_THREADED
 
-    CgiParser cgi(conf_.maxRequestSize());
+    CgiParser cgi(conf_.maxRequestSize(), conf_.maxFormDataSize());
 
     try {
       cgi.parse(*request, CgiParser::ReadHeadersOnly);
@@ -482,7 +461,6 @@ void WebController::updateResourceProgress(WebRequest *request,
 					   boost::uintmax_t current,
 					   boost::uintmax_t total)
 {
-  WebSession::Handler::instance()->setRequest(request, (WebResponse *)request);
   WApplication *app = WApplication::instance();
 
   const std::string *requestE = request->getParameter("request");
@@ -496,8 +474,13 @@ void WebController::updateResourceProgress(WebRequest *request,
     resource = app->decodeExposedResource(*resourceE);
   }
 
-  if (resource)
-    resource->dataReceived().emit(current, total);
+  if (resource) {
+    ::int64_t dataExceeded = request->postDataExceeded();
+    if (dataExceeded)
+      resource->dataExceeded().emit(dataExceeded);
+    else
+      resource->dataReceived().emit(current, total);
+  }
 }
 
 bool WebController::handleApplicationEvent(const ApplicationEvent& event)
@@ -581,7 +564,7 @@ void WebController::handleRequest(WebRequest *request)
     }
   }
 
-  CgiParser cgi(conf_.maxRequestSize());
+  CgiParser cgi(conf_.maxRequestSize(), conf_.maxFormDataSize());
 
   try {
     cgi.parse(*request, conf_.needReadBodyBeforeResponse()
@@ -776,36 +759,7 @@ const EntryPoint *WebController::getEntryPoint(WebRequest *request)
   const std::string& scriptName = request->scriptName();
   const std::string& pathInfo = request->pathInfo();
 
-  // Only one default entry point.
-  if (conf_.entryPoints().size() == 1
-      && conf_.entryPoints()[0].path().empty())
-    return &conf_.entryPoints()[0];
-
-  // Multiple entry points.
-  int bestMatch = -1;
-  std::size_t bestLength = 0;
-
-  for (unsigned i = 0; i < conf_.entryPoints().size(); ++i) {
-    const Wt::EntryPoint& ep = conf_.entryPoints()[i];
-
-    if (ep.path().empty()) {
-      if (bestLength == 0)
-	bestMatch = i;
-    } else {
-      if (ep.path().length() > bestLength) {
-	if (matchesPath(scriptName + pathInfo, ep.path()) ||
-	    matchesPath(pathInfo, ep.path())) {
-	  bestLength = ep.path().length();
-	  bestMatch = i;
-	}
-      }
-    }
-  }
-
-  if (bestMatch >= 0)
-    return &conf_.entryPoints()[bestMatch];
-  else
-    return 0;
+  return conf_.matchEntryPoint(scriptName, pathInfo, false);
 }
 
 std::string

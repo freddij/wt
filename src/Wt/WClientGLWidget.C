@@ -953,7 +953,7 @@ WGLWidget::AttribLocation WClientGLWidget::getAttribLocation(WGLWidget::Program 
   return retval;
 }
 
-WGLWidget::UniformLocation WClientGLWidget::getUniformLocation(WGLWidget::Program program, const std::string location)
+WGLWidget::UniformLocation WClientGLWidget::getUniformLocation(WGLWidget::Program program, const std::string &location)
 {
   WGLWidget::UniformLocation retval(uniforms_++);
   js_ << retval.jsRef() << "=ctx.getUniformLocation(" << program.jsRef() 
@@ -1779,7 +1779,7 @@ void WClientGLWidget::render(const std::string& jsRef, WFlags<RenderFlag> flags)
       if (preloadImages_.size() > 0) {
 	tmp <<
 	  "o.preloadingTextures++;"
-	  "new Wt._p_.ImagePreloader([";
+	  "new " << wApp->javaScriptClass() << "._p_.ImagePreloader([";
 	for (unsigned i = 0; i < preloadImages_.size(); ++i) {
 	  if (i != 0)
 	    tmp << ',';
@@ -1808,7 +1808,7 @@ void WClientGLWidget::render(const std::string& jsRef, WFlags<RenderFlag> flags)
       if (preloadArrayBuffers_.size() > 0) {
 	tmp <<
 	  "o.preloadingBuffers++;"
-	  "new Wt._p_.ArrayBufferPreloader([";
+	  "new " << wApp->javaScriptClass() << "._p_.ArrayBufferPreloader([";
 	for (unsigned i = 0; i < preloadArrayBuffers_.size(); ++i) {
 	  if (i != 0)
 	    tmp << ',';

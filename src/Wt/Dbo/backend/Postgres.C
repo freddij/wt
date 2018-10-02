@@ -5,11 +5,19 @@
  *
  * Contributed by: Hilary Cheng
  */
+#include "Wt/WConfig.h"
+
+#ifdef WT_WIN32
+// WinSock2.h warns that it should be included before windows.h
+#include <WinSock2.h>
+#endif // WT_WIN32
+
 #include "Wt/Dbo/backend/Postgres"
 #include "Wt/Dbo/Exception"
 
 #include <libpq-fe.h>
 #include <boost/lexical_cast.hpp>
+#include <cerrno>
 #include <iostream>
 #include <vector>
 #include <sstream>
@@ -21,7 +29,9 @@
 #ifdef WT_WIN32
 #define snprintf _snprintf
 #define strcasecmp _stricmp
-#endif
+#else // WT_WIN32
+#include <sys/select.h>
+#endif // WT_WIN32
 
 #define BYTEAOID 17
 
@@ -32,6 +42,9 @@ namespace Wt {
   namespace Dbo {
     namespace backend {
 
+// do not reconnect in a transaction unless we exceed the lifetime by 120s.
+const int TRANSACTION_LIFETIME_MARGIN = 120;
+    
 class PostgresException : public Exception
 {
 public:
@@ -69,7 +82,8 @@ public:
 
   virtual ~PostgresStatement()
   {
-    PQclear(result_);
+    if (result_)
+      PQclear(result_);
     delete[] paramValues_;
     delete[] paramTypes_;
   }
@@ -81,6 +95,18 @@ public:
     state_ = Done;
   }
 
+  void rebuild()
+  {
+    if (result_) {
+      PQclear(result_);
+      result_ = 0;
+      delete[] paramValues_;
+      paramValues_ = 0;
+      delete[] paramTypes_;
+      paramTypes_ = paramLengths_ = paramFormats_ = 0;
+    }
+  }
+  
   virtual void bind(int column, const std::string& value)
   {
     DEBUG(std::cerr << this << " bind " << column << " " << value << std::endl);
@@ -185,6 +211,8 @@ public:
 
   virtual void execute()
   {
+    conn_.checkConnection(TRANSACTION_LIFETIME_MARGIN);
+    
     if (conn_.showQueries())
       std::cerr << sql_ << std::endl;
 
@@ -222,10 +250,49 @@ public:
 	  paramValues_[i] = const_cast<char *>(params_[i].value.c_str());
     }
 
-    PQclear(result_);
-    result_ = PQexecPrepared(conn_.connection(), name_, params_.size(),
-			     paramValues_, paramLengths_, paramFormats_, 0);
+    int err = PQsendQueryPrepared(conn_.connection(), name_, params_.size(),
+				  paramValues_, paramLengths_, paramFormats_, 0);
+    if (err != 1)
+      throw PostgresException(PQerrorMessage(conn_.connection()));
 
+    if (conn_.timeout() > 0) {
+      fd_set rfds;
+      FD_ZERO(&rfds);
+      FD_SET(PQsocket(conn_.connection()), &rfds);
+      struct timeval timeout;
+      timeout.tv_sec = conn_.timeout() / 1000;
+      timeout.tv_usec = (conn_.timeout() % 1000) * 1000;
+
+      for (;;) {
+	int result = select(FD_SETSIZE, &rfds, 0, 0, &timeout);
+
+	if (result == 0) {
+	  std::cerr << "Postgres: timeout while executing query" << std::endl;
+	  conn_.disconnect();
+	  throw PostgresException("Database timeout");
+	} else if (result == -1) {
+	  if (errno != EINTR) {
+	    perror("select");
+	    throw PostgresException("Error waiting for result");
+	  } else {
+	    // EINTR, try again
+	  }
+	} else {
+	  err = PQconsumeInput(conn_.connection());
+	  if (err != 1)
+	    throw PostgresException(PQerrorMessage(conn_.connection()));
+
+	  if (PQisBusy(conn_.connection()) != 1)
+	    break;
+	}
+      }
+    }
+
+    std::string error;
+
+    PQclear(result_);
+    result_ = PQgetResult(conn_.connection());
+    
     row_ = 0;
     if (PQresultStatus(result_) == PGRES_COMMAND_OK) {
       std::string s = PQcmdTuples(result_);
@@ -256,6 +323,11 @@ public:
       } else {
 	state_ = FirstRow;
       }
+    }
+
+    PGresult *nullResult = PQgetResult(conn_.connection());
+    if (nullResult != 0) {
+      throw PostgresException("PQgetResult() returned more results");
     }
 
     handleErr(PQresultStatus(result_), result_);
@@ -546,21 +618,36 @@ private:
 };
 
 Postgres::Postgres()
-  : conn_(NULL)
+  : conn_(NULL),
+    timeout_(0),
+    maximumLifetime_(-1),
+    connectTime_(0)
 { }
 
 Postgres::Postgres(const std::string& db)
-  : conn_(NULL)
+  : conn_(NULL),
+    timeout_(0),
+    maximumLifetime_(-1),
+    connectTime_(0)
 {
   if (!db.empty())
     connect(db);
 }
 
 Postgres::Postgres(const Postgres& other)
-  : SqlConnection(other)
+  : SqlConnection(other),
+    conn_(NULL),
+    timeout_(other.timeout_),
+    maximumLifetime_(other.maximumLifetime_),
+    connectTime_(0)
 {
   if (!other.connInfo_.empty())
     connect(other.connInfo_);
+}
+
+void Postgres::setMaximumLifetime(int seconds)
+{
+  maximumLifetime_ = seconds;    
 }
 
 Postgres::~Postgres()
@@ -570,6 +657,30 @@ Postgres::~Postgres()
     PQfinish(conn_);
 }
 
+void Postgres::disconnect()
+{
+  if (conn_)
+    PQfinish(conn_);
+
+  conn_ = 0;
+
+  std::vector<SqlStatement *> statements = getStatements();
+
+  /* Evict also the statements -- the statements themselves can stay,
+     only running statements behavior is affected (but we are dealing with
+     that while calling disconnect) */
+  for (std::size_t i = 0; i < statements.size(); ++i) {
+    SqlStatement *s = statements[i];
+    PostgresStatement *ps = dynamic_cast<PostgresStatement *>(s);
+    ps->rebuild();
+  }
+}
+    
+void Postgres::setTimeout(int millis)
+{
+  timeout_ = millis;
+}
+    
 Postgres *Postgres::clone() const
 {
   return new Postgres(*this);
@@ -584,34 +695,150 @@ bool Postgres::connect(const std::string& db)
     std::string error = PQerrorMessage(conn_);
     PQfinish(conn_);
     conn_ = 0;
+    connectTime_ = 0;
     throw PostgresException("Could not connect to: " + error);
-  }
+  } else
+    connectTime_ = std::time(0);
 
   PQsetClientEncoding(conn_, "UTF8");
 
   return true;
 }
 
+bool Postgres::reconnect()
+{
+  std::cerr << this << " reconnecting..." << std::endl;
+  
+  if (conn_) {
+    if (PQstatus(conn_) == CONNECTION_OK) {
+      PQfinish(conn_);
+    }
+
+    conn_ = 0;
+  }
+
+  clearStatementCache();
+
+  if (!connInfo_.empty()) {
+    bool result = connect(connInfo_);
+
+    if (result) {
+      const std::vector<std::string>& statefulSql = getStatefulSql();
+      for (unsigned i = 0; i < statefulSql.size(); ++i)
+	executeSql(statefulSql[i]);
+    }
+
+    return result;
+  } else
+    return false;
+}
+
 SqlStatement *Postgres::prepareStatement(const std::string& sql)
 {
+  if (PQstatus(conn_) != CONNECTION_OK)  {
+    std::cerr << "Postgres: connection lost to server, trying to reconnect..."
+	      << std::endl;
+    if (!reconnect()) {
+      throw PostgresException("Could not reconnect to server...");
+    }
+  }
+
   return new PostgresStatement(*this, sql);
 }
 
 void Postgres::executeSql(const std::string &sql)
 {
-  PGresult *result;
+  exec(sql, true);
+}
+
+/*
+ * margin: a grace period beyond the lifetime
+ */
+void Postgres::checkConnection(int margin)
+{
+  if (maximumLifetime_ > 0 && connectTime_ != 0) {
+    std::time_t t = std::time(0);
+    if (t - connectTime_ > maximumLifetime_ + margin) {
+      std::cerr << "Postgres: maximum connection lifetime passed, trying to reconnect..."
+		<< std::endl;
+      if (!reconnect()) {
+	throw PostgresException("Could not reconnect to server...");
+      }
+    }
+  }
+}
+    
+void Postgres::exec(const std::string& sql, bool showQuery)
+{
+  checkConnection(0);
+  
+  if (PQstatus(conn_) != CONNECTION_OK)  {
+    std::cerr << "Postgres: connection lost to server, trying to reconnect..."
+	      << std::endl;
+    if (!reconnect()) {
+      throw PostgresException("Could not reconnect to server...");
+    }
+  }
+
+  if (showQuery && showQueries())
+    std::cerr << sql << std::endl;
+  
   int err;
 
-  if (showQueries())
-    std::cerr << sql << std::endl;
-			
-  result = PQexec(conn_, sql.c_str());
-  err = PQresultStatus(result);
-  if (err != PGRES_COMMAND_OK && err != PGRES_TUPLES_OK) {
-    PQclear(result);
+  err = PQsendQuery(conn_, sql.c_str());
+  if (err != 1)
     throw PostgresException(PQerrorMessage(conn_));
+
+  if (timeout_ > 0) {
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(PQsocket(conn_), &rfds);
+    struct timeval timeout;
+    timeout.tv_sec = timeout_ / 1000;
+    timeout.tv_usec = (timeout_ % 1000) * 1000;
+
+    for (;;) {
+      int result = select(FD_SETSIZE, &rfds, 0, 0, &timeout);
+
+      if (result == 0) {
+	std::cerr << "Postgres: timeout while executing query" << std::endl;
+	disconnect();
+	throw PostgresException("Database timeout");
+      } else if (result == -1) {
+	if (errno != EINTR) {
+	  perror("select");
+	  throw PostgresException("Error waiting for result");
+	} else {
+	  // EINTR, try again
+	}
+      } else {
+	err = PQconsumeInput(conn_);
+	if (err != 1)
+	  throw PostgresException(PQerrorMessage(conn_));
+
+	if (PQisBusy(conn_) != 1)
+	  break;
+      }
+    }
   }
-  PQclear(result);
+
+  std::string error;
+
+  for (;;) {
+    PGresult *result = PQgetResult(conn_);
+    if (result == 0)
+      break;
+
+    err = PQresultStatus(result);
+
+    if (err != PGRES_COMMAND_OK && err != PGRES_TUPLES_OK)
+      error += PQerrorMessage(conn_);
+
+    PQclear(result);
+  }
+
+  if (!error.empty())
+    throw PostgresException(error);
 }
 
 std::string Postgres::autoincrementType() const
@@ -681,20 +908,17 @@ bool Postgres::requireSubqueryAlias() const
 
 void Postgres::startTransaction()
 {
-  PGresult *result = PQexec(conn_, "start transaction");
-  PQclear(result);
+  exec("start transaction", false);
 }
 
 void Postgres::commitTransaction()
 {
-  PGresult *result = PQexec(conn_, "commit transaction");
-  PQclear(result);
+  exec("commit transaction", false);
 }
 
 void Postgres::rollbackTransaction()
 {
-  PGresult *result = PQexec(conn_, "rollback transaction");
-  PQclear(result);
+  exec("rollback transaction", false);
 }
 
     }

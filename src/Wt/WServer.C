@@ -99,7 +99,11 @@ WIOService& WServer::ioService()
 {
   if (!ioService_) {
     ioService_ = new WIOService();
-    ioService_->setThreadCount(configuration().numThreads());
+    int numSessionThreads = configuration().numSessionThreads();
+    if (dedicatedProcessEnabled_&& numSessionThreads != -1)
+      ioService_->setThreadCount(numSessionThreads);
+    else
+      ioService_->setThreadCount(configuration().numThreads());
   }
 
   return *ioService_;
@@ -241,19 +245,14 @@ void WServer::addResource(WResource *resource, const std::string& path)
     throw WServer::Exception("WServer::addResource() error: "
 			     "static resource path should start with \'/\'");
 
-  std::vector<EntryPoint> entryPoints = configuration().entryPoints();
-  for (unsigned i = 0; i < entryPoints.size(); ++i) {
-    if (entryPoints[i].resource() &&
-	entryPoints[i].resource()->internalPath() == path) {
-      WString error("WServer::addResource() error: "
-		    "a static resource was already deployed on path '{1}'");
-      throw WServer::Exception(error.arg(path).toUTF8());
-    }
+  bool success = configuration().tryAddResource(EntryPoint(resource, path));
+  if (success)
+    resource->setInternalPath(path);
+  else {
+    WString error(Wt::utf8("WServer::addResource() error: "
+	                   "a static resource was already deployed on path '{1}'"));
+    throw WServer::Exception(error.arg(path).toUTF8());
   }
-
-  resource->setInternalPath(path);
-
-  configuration().addEntryPoint(EntryPoint(resource, path));
 }
 
 void WServer::removeEntryPoint(const std::string& path){

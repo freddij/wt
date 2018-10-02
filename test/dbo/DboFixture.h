@@ -5,6 +5,7 @@
 #include <Wt/Dbo/backend/MySQL>
 #include <Wt/Dbo/backend/Sqlite3>
 #include <Wt/Dbo/backend/Firebird>
+#include <Wt/Dbo/backend/MSSQLServer>
 #include <Wt/Dbo/FixedSqlConnectionPool>
 #include <Wt/WDate>
 #include <Wt/WDateTime>
@@ -46,9 +47,11 @@ struct DboFixtureBase
       logged = true;
     }
 
-    connection = new dbo::backend::Postgres
-        ("user=postgres_test password=postgres_test port=5432 dbname=wt_test");
+    dbo::backend::Postgres *postgres = new dbo::backend::Postgres
+      ("user=postgres_test password=postgres_test port=5432 dbname=wt_test");
+    connection = postgres;
     // use host=vendetta for testing.
+
 #endif // POSTGRES");
 
 #ifdef MYSQL
@@ -57,8 +60,10 @@ struct DboFixtureBase
       logged = true;
     }
 
-    connection = new dbo::backend::MySQL("wt_test_db", "test_user",
-                                            "test_pw", "vendetta", 3306);
+    dbo::backend::MySQL *mysql = new dbo::backend::MySQL("wt_test_db", "test_user",
+                                                         "test_pw", "vendetta", 3306);
+    mysql->setFractionalSecondsPart(3);
+    connection = mysql;
 #endif // MYSQL
 
 #ifdef FIREBIRD
@@ -78,11 +83,25 @@ struct DboFixtureBase
       logged = true;
     }
 
-    connection = new dbo::backend::Firebird ("vendetta",
+    connection = new dbo::backend::Firebird ("localhost",
 					     file, 
 					     "test_user", "test_pwd", 
 					     "", "", "");
 #endif // FIREBIRD
+
+#ifdef MSSQLSERVER
+    if (!logged) {
+      std::cerr << "DboTest.C created a Microsoft SQL Server connector" << std::endl;
+      logged = true;
+    }
+
+    connection = new dbo::backend::MSSQLServer(
+	"Driver={ODBC Driver 13 for SQL Server};"
+	"Server=vendetta;"
+	"UID=test_user;"
+	"PWD=test_pwd;"
+	"Database=wt_test;");
+#endif // MSSQLSERVER
 
     if (showQueries)
       connection->setProperty("show-queries", "true");

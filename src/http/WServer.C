@@ -123,9 +123,8 @@ void WServer::setServerConfiguration(int argc, char *argv[],
 
   impl_->serverConfiguration_->setSslPasswordCallback(sslPasswordCallback_);
 
-  if (argc != 0)
-    impl_->serverConfiguration_->setOptions(argc, argv,
-					    serverConfigurationFile);
+  impl_->serverConfiguration_->setOptions(argc, argv,
+					  serverConfigurationFile);
 }
 
 bool WServer::start()
@@ -163,6 +162,7 @@ bool WServer::start()
 
   if (impl_->serverConfiguration_->parentPort() != -1) {
     configuration().setBehindReverseProxy(true);
+    dedicatedProcessEnabled_ = true;
   }
 
   try {

@@ -632,9 +632,11 @@ public:
 
   /*! \brief Returns a widget for a variable name.
    *
-   * This is a convience method, which calls resolveWidget() and casts
+   * This is a convience method, which calls resolveWidget() and dynamic casts
    * the result to type \p T. You may use this method to fetch widgets
    * that have previously been bound using bindWidget().
+   *
+   * If the cast fails, a null pointer is returned.
    */
   template <typename T> T resolve(const std::string& varName);
 
@@ -749,6 +751,18 @@ protected:
 
   virtual void enableAjax();
 
+  /*! \brief Notifies the template that it has changed and must be rerendered.
+   *
+   * If you update a WTemplate with e.g bindWidget or setCondition,
+   * or change the template text, the template will automatically be
+   * rerendered.
+   *
+   * However, if you create a subclass of WTemplate and override resolveString or
+   * resolveWidget, you will have to notify the WTemplate if it has changed with
+   * a call to reset().
+   */
+  void reset();
+
 private:
   typedef std::map<std::string, Function> FunctionMap;
   typedef std::map<std::string, WString> StringMap;
@@ -773,6 +787,7 @@ private:
   static std::size_t parseArgs(const std::string& text,
 			       std::size_t pos,
 			       std::vector<WString>& result);
+  void unrenderWidget(WWidget *w, DomElement &el);
 
   EscapeOStream* plainTextNewLineEscStream_;
 };

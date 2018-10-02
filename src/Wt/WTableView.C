@@ -25,6 +25,7 @@
 #define UNKNOWN_VIEWPORT_HEIGHT 800
 #define CONTENTS_VIEWPORT_HEIGHT -1
 
+#include <algorithm>
 #include <cmath>
 #include <math.h>
 
@@ -55,7 +56,7 @@ WTableView::WTableView(WContainerWidget *parent)
     plainTable_(0),
     dropEvent_(impl_, "dropEvent"),
     scrolled_(impl_, "scrolled"),
-    itemTouchEvent_(impl_, "itemTouchEvent"),
+    itemTouchSelectEvent_(impl_, "itemTouchSelectEvent"),
     firstColumn_(-1),
     lastColumn_(-1),
     viewportLeft_(0),
@@ -145,12 +146,24 @@ void WTableView::setup()
 
     headerColumnsCanvas_ = new WContainerWidget();
     headerColumnsCanvas_->setPositionScheme(Relative);
+    headerColumnsCanvas_->clicked().preventPropagation();
     headerColumnsCanvas_->clicked()
       .connect(boost::bind(&WTableView::handleSingleClick, this, true, _1));
+    headerColumnsCanvas_->clicked().connect("function(o, e) { "
+                               "$(document).trigger($.event.fix(e));"
+                               "}");
+    headerColumnsCanvas_->mouseWentDown().preventPropagation();
     headerColumnsCanvas_->mouseWentDown()
       .connect(boost::bind(&WTableView::handleMouseWentDown, this, true, _1)); 
+    headerColumnsCanvas_->mouseWentDown().connect("function(o, e) { "
+                                     "$(document).trigger($.event.fix(e));"
+                                     "}");
+    headerColumnsCanvas_->mouseWentUp().preventPropagation();
     headerColumnsCanvas_->mouseWentUp()
       .connect(boost::bind(&WTableView::handleMouseWentUp, this, true, _1)); 
+    headerColumnsCanvas_->mouseWentUp().connect("function(o, e) { "
+                                     "$(document).trigger($.event.fix(e));"
+                                     "}");
     headerColumnsCanvas_->addWidget(headerColumnsTable_);
 
     headerColumnsContainer_ = new WContainerWidget();
@@ -197,6 +210,7 @@ void WTableView::enableAjax()
   plainTable_ = 0;
   setup();
   defineJavaScript();
+  scheduleRerender(NeedRerenderHeader);
 }
 
 void WTableView::resize(const WLength& width, const WLength& height)
@@ -440,32 +454,19 @@ int WTableView::lastColumn() const
     return columnCount() - 1;
 }
 
-void WTableView::addSection(const Side side,
-			    const std::vector<WWidget *>& items)
+void WTableView::addSection(const Side side)
 {
   assert(ajaxMode());
 
   switch (side) {
   case Top:
-    for (unsigned i = 0; i < items.size(); ++i) {
-      ColumnWidget *w = columnContainer(i);
-      w->insertWidget(0, items[i]);
-    }
-
     setSpannerCount(side, spannerCount(side) - 1);
     break;
   case Bottom:
-    for (unsigned i = 0; i < items.size(); ++i) {
-      ColumnWidget *w = columnContainer(i);
-      w->addWidget(items[i]);
-    }
-
     setSpannerCount(side, spannerCount(side) - 1);
     break;
   case Left: {
     ColumnWidget *w = new ColumnWidget(this, firstColumn() - 1);
-    for (unsigned i = 0; i < items.size(); ++i)
-      w->addWidget(items[i]);
 
     if (!columnInfo(w->column()).hidden)
       table_->setOffsets(table_->offset(Left).toPixels()
@@ -478,8 +479,7 @@ void WTableView::addSection(const Side side,
   }
   case Right: {
     ColumnWidget *w = new ColumnWidget(this, lastColumn() + 1);
-    for (unsigned i = 0; i < items.size(); ++i)
-      w->addWidget(items[i]);
+
     if (columnInfo(w->column()).hidden)
       w->hide();
 
@@ -607,57 +607,63 @@ void WTableView::renderTable(const int fr, const int lr,
   for (int i = 0; i < -bottomRowsToAdd; ++i)
     removeSection(Bottom);
 
-  // Add rows
-  for (int i = 0; i < topRowsToAdd; i++) {
-    int row = firstRow() - 1;
+  // Add (empty) columns
+  for (int i = 0; i < leftColsToAdd; ++i)
+    addSection(Left);
+  for (int i = 0; i < rightColsToAdd; ++i)
+    addSection(Right);
 
-    std::vector<WWidget *> items;
-    for (int j = 0; j < rowHeaderCount(); ++j)
-      items.push_back(renderWidget(0, model()->index(row, j, rootIndex())));
-    for (int j = firstColumn(); j <= lastColumn(); ++j)
-      items.push_back(renderWidget(0, model()->index(row, j, rootIndex())));
-
-    addSection(Top, items);
+  // Add new top rows
+  for (int i = 0; i < topRowsToAdd; ++i) {
+    int row = fr + i;
+    for (int col = 0; col < rowHeaderCount(); ++col) {
+      ColumnWidget *w = columnContainer(col);
+      w->insertWidget(i, renderWidget(0, model()->index(row, col, rootIndex())));
+    }
+    for (int col = fc; col <= lc; ++col) {
+      ColumnWidget *w = columnContainer(col - fc + rowHeaderCount());
+      w->insertWidget(i, renderWidget(0, model()->index(row, col, rootIndex())));
+    }
+    addSection(Top);
   }
-
+  // Populate new columns of existing rows
+  if (oldLastRow != -1 &&
+      (leftColsToAdd > 0 ||
+       rightColsToAdd > 0)) {
+    for (int row = std::max(oldFirstRow, fr); row <= std::min(oldLastRow, lr); ++row) {
+      // Populate left columns
+      for (int j = 0; j < leftColsToAdd; ++j) {
+        int col = fc + j;
+        int renderCol = rowHeaderCount() + j;
+        ColumnWidget *w = columnContainer(renderCol);
+        w->addWidget(renderWidget(0, model()->index(row, col, rootIndex())));
+      }
+      // Populate right columns
+      for (int j = 0; j < rightColsToAdd; ++j) {
+        int col = lc - rightColsToAdd + 1 + j;
+        ColumnWidget *w = columnContainer(col - fc + rowHeaderCount());
+        w->addWidget(renderWidget(0, model()->index(row, col, rootIndex())));
+      }
+    }
+  }
+  // Add new bottom rows
   for (int i = 0; i < bottomRowsToAdd; ++i) {
-    int row = lastRow() + 1;
-
-    std::vector<WWidget *> items;
-    for (int j = 0; j < rowHeaderCount(); ++j)
-      items.push_back(renderWidget(0, model()->index(row, j, rootIndex())));
-    for (int j = firstColumn(); j <= lastColumn(); ++j)
-      items.push_back(renderWidget(0, model()->index(row, j, rootIndex())));
-
-    addSection(Bottom, items);
-  }
-
-  // Add columns
-  for (int i = 0; i < leftColsToAdd; ++i) {
-    int col = firstColumn() - 1;
-
-    std::vector<WWidget *> items;
-    int nfr = firstRow(), nlr = lastRow();
-    for (int j = nfr; j <= nlr; ++j)
-      items.push_back(renderWidget(0, model()->index(j, col, rootIndex())));
-
-    addSection(Left, items);
-  }
-
-  for (int i = 0; i < rightColsToAdd; ++i) {
-    int col = lastColumn() + 1;
-
-    std::vector<WWidget *> items;
-    int nfr = firstRow(), nlr = lastRow();
-    for (int j = nfr; j <= nlr; ++j)
-      items.push_back(renderWidget(0, model()->index(j, col, rootIndex())));
-
-    addSection(Right, items);
+    int row = oldLastRow == -1 ? fr + i : oldLastRow + 1 + i;
+    for (int col = 0; col < rowHeaderCount(); ++col) {
+      ColumnWidget *w = columnContainer(col);
+      w->addWidget(renderWidget(0, model()->index(row, col, rootIndex())));
+    }
+    for (int col = fc; col <= lc; ++col) {
+      ColumnWidget *w = columnContainer(col - fc + rowHeaderCount());
+      w->addWidget(renderWidget(0, model()->index(row, col, rootIndex())));
+    }
+    addSection(Bottom);
   }
 
   updateColumnOffsets();
 
-  // assert(lastRow() == lr && firstRow() == fr);
+  assert(lastRow() == lr && firstRow() == fr);
+  assert(lastColumn() == lc && firstColumn() == fc);
 
   int scrollX1 = std::max(0, viewportLeft_ - viewportWidth_ / 2);
   int scrollX2 = viewportLeft_ + viewportWidth_ / 2;
@@ -766,8 +772,8 @@ void WTableView::defineJavaScript()
   if (!scrolled_.isConnected())
     scrolled_.connect(this, &WTableView::onViewportChange);
 
-  if (!itemTouchEvent_.isConnected())
-    itemTouchEvent_.connect(this, &WTableView::handleTouchStarted);
+  if (!itemTouchSelectEvent_.isConnected())
+    itemTouchSelectEvent_.connect(this, &WTableView::handleTouchSelected);
 
   if (!columnResizeConnected_) {
     columnResized().connect(this, &WTableView::onColumnResize);
@@ -815,6 +821,13 @@ void WTableView::defineJavaScript()
 
 void WTableView::render(WFlags<RenderFlag> flags)
 {
+  if (flags & RenderFull && !ajaxMode() &&
+      Wt::WApplication::instance()->environment().ajax()) {
+    // Was not rendered when Ajax was enabled, issue #5470
+    plainTable_ = 0;
+    setup();
+  }
+
   if (ajaxMode()) {
     if (flags & RenderFull)
       defineJavaScript();
@@ -832,6 +845,24 @@ void WTableView::render(WFlags<RenderFlag> flags)
 	.connect(boost::bind(&WTableView::handleRootDoubleClick, this, 0, _1));
       headerColumnsContainer_->doubleClicked()
 	.connect(boost::bind(&WTableView::handleRootDoubleClick, this, 0, _1));
+    }
+
+    if (!touchStartConnection_.connected()
+        && touchStarted().isConnected()) {
+      touchStartConnection_ = canvas_->touchStarted()
+	.connect(this, &WTableView::handleTouchStarted);
+    }
+
+    if (!touchMoveConnection_.connected()
+        && touchMoved().isConnected()) {
+      touchMoveConnection_ = canvas_->touchMoved()
+        .connect(this, &WTableView::handleTouchMoved);
+    }
+
+    if (!touchEndConnection_.connected()
+        && touchEnded().isConnected()) {
+      touchEndConnection_ = canvas_->touchEnded()
+	.connect(this, &WTableView::handleTouchEnded);
     }
   }
 
@@ -1593,7 +1624,12 @@ void WTableView::computeRenderedArea()
     int left
       = std::max(0, viewportLeft_ - viewportWidth_ - borderColumnPixels);
     int right
-      = std::min(static_cast<int>(canvas_->width().toPixels()),
+      = std::min(std::max(static_cast<int>(canvas_->width().toPixels()),
+                          viewportWidth_), // When a column was made wider, and the
+                                           // canvas is narrower than the viewport,
+                                           // the size of the canvas will not have
+                                           // been updated yet, so we use the viewport
+                                           // width instead.
 		 viewportLeft_ + 2 * viewportWidth_ + borderColumnPixels);
 
     int total = 0;
@@ -1677,13 +1713,43 @@ void WTableView::handleMouseWentUp(bool headerColumns, const WMouseEvent& event)
   handleMouseUp(index, event);
 }
 
-void WTableView::handleTouchStarted(const WTouchEvent& event)
+void WTableView::handleTouchSelected(const WTouchEvent& event)
 {
   std::vector<WModelIndex> indices;
   for(std::size_t i = 0; i < event.touches().size(); i++){
     indices.push_back(translateModelIndex(event.touches()[i]));
   }
+  handleTouchSelect(indices, event);
+}
+
+void WTableView::handleTouchStarted(const WTouchEvent& event)
+{
+  std::vector<WModelIndex> indices;
+  const std::vector<Touch> &touches = event.changedTouches();
+  for(std::size_t i = 0; i < touches.size(); i++){
+    indices.push_back(translateModelIndex(touches[i]));
+  }
   handleTouchStart(indices, event);
+}
+
+void WTableView::handleTouchMoved(const WTouchEvent& event)
+{
+  std::vector<WModelIndex> indices;
+  const std::vector<Touch> &touches = event.changedTouches();
+  for(std::size_t i = 0; i < touches.size(); i++){
+    indices.push_back(translateModelIndex(touches[i]));
+  }
+  handleTouchMove(indices, event);
+}
+
+void WTableView::handleTouchEnded(const WTouchEvent& event)
+{
+  std::vector<WModelIndex> indices;
+  const std::vector<Touch> &touches = event.changedTouches();
+  for (std::size_t i = 0; i < touches.size(); i++) {
+    indices.push_back(translateModelIndex(touches[i]));
+  }
+  handleTouchEnd(indices, event);
 }
 
 void WTableView::handleRootSingleClick(int u, const WMouseEvent& event)

@@ -22,6 +22,339 @@ newer version of Wt. It lists changes in the library that may break
 the way you build Wt, the way you configure Wt or the Wt API and
 behaviour.
 
+<h2>Release 3.3.11 (August 22, 2018)</h2>
+<p>This release brings with it the usual bugfixes, but also some new features:</p>
+
+<h3>WCartesianChart improvements</h3>
+
+<h4>Multiple Y axis support</h4>
+
+<p>In previous versions of Wt, it was already possible to have two separate Y axes. This release
+allows for any amount of Y axes, and extends the interactive functionality to support multiple Y axes.</p>
+
+<p>The following methods have been added:</p>
+
+<dl>
+  <dt><a href="classWt_1_1Chart_1_1WCartesianChart.html"><tt>WCartesianChart</tt></a></dt>
+  <dd>
+    <ul>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a44f9ac7c63b7ccf0be2cc925c8159094"><tt>std::vector&lt;WAxis*&gt; yAxes()</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a457197f9f6a0215a260922a47dde9115"><tt>std::vector&lt;const WAxis*&gt; yAxes() const</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a3b0038712fce477634c39cdc736c2388"><tt>WAxis&amp; yAxis(int i)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#ab301c3aed79917163a093ca102cc4563"><tt>const WAxis&amp; yAxis(int i) const</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#aa9d7bbc307118d222aca64deb76b60d5"><tt>int yAxisCount() const</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a937af85bf6420974cd235a1758454414"><tt>int addYAxis(WAxis *waxis)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a34e5219ed027818cf6bf026bf9de7689"><tt>void removeYAxis(int yAxisId)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a34329c849eaa8761f730d027c9c47af9"><tt>void clearYAxes()</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a191d840f367d27f66612b8e68009f888"><tt>WPointF mapFromDevice(const WPointF &amp;point, int ordinateAxis) const</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#aae7328844bbaab5a7b2dc208cf59fde1"><tt>WPointF mapToDevice(const boost::any &amp;xValue, const boost::any &amp;yValue, int yAxis, int xSegment = 0, int ySegment = 0) const</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a9f31ca5174b6127e49ad92c9da481adc"><tt>void setCrosshairYAxis(int yAxis)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#abdac8c6bf3f39c524054645f8b063383"><tt>int crosshairYAxis() const</tt></a></li>
+    </ul>
+    <b>Small breaking change</b>: note that the virtual method <a href="classWt_1_1Chart_1_1WCartesianChart.html#a1813b0cfd8692b5b5720b5b9e7fa807b"><tt>prepareAxes</tt></a> has been modified to take a <a href="classWt_1_1WPaintDevice.html"><tt>WPaintDevice*</tt></a> argument. If your code overrides this method, be sure to add this argument to your overridden version.
+  </dd>
+  <dt><a href="classWt_1_1Chart_1_1WDataSeries.html"><tt>WDataSeries</tt></a></dt>
+  <dd>
+    <ul>
+      <li><a href="classWt_1_1Chart_1_1WDataSeries.html#aafffe717e28c00afea645652a9b6a655"><tt>WDataSeries(int modelColumn, SeriesType seriesType, int yAxis)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WDataSeries.html#ae3abca77e796e8d0c1b1e5830ef80866"><tt>void bindToYAxis(int yAxis)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WDataSeries.html#a338558cb67b5114f7d9de07192a3c1a8"><tt>int yAxis() const</tt></a></li>
+    </ul>
+  </dd>
+</dl>
+
+<p>It's also possible to pan and zoom individual axes by scrolling on or dragging the axis itself, or by touch dragging and pinching.</p>
+
+<h4>On-demand loading</h4>
+
+<p>We've added on-demand loading functionality to <a href="classWt_1_1Chart_1_1WCartesianChart.html"><tt>WCartesianChart</tt></a>. Enable on-demand loading when you have a lot of data and/or need the ability to zoom in very far. This will make it so that only the data for the visible X range is loaded, and will improve performance of data series with large amounts data. This becomes especially useful in combination with the ability to set a maximum zoom range, so that you can't zoom all the way out to see all data.</p>
+
+<p>The following methods have been added:</p>
+
+<dl>
+  <dt><a href="classWt_1_1Chart_1_1WCartesianChart.html"><tt>WCartesianChart</tt></a></dt>
+  <dd>
+    <ul>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a97f7f38a9f751b0b41d67f4546cc32f9"><tt>void setOnDemandLoadingEnabled(bool enabled)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a2380aeb17e103bae1f332fd4c56d6b2b"><tt>bool onDemandLoadingEnabled() const</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a9072e157f556bd8eea1eef14426d4f29"><tt>void setLoadingBackground(const WBrush &amp;brush)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WCartesianChart.html#a3e33918e5cbee75d172ab820e71f69bc"><tt>const WBrush&amp; loadingBackground() const</tt></a></li>
+    </ul>
+  </dd>
+  <dt><a href="classWt_1_1Chart_1_1WAxis.html"><tt>WAxis</tt></a></dt>
+  <dd>
+    <ul>
+      <li><a href="classWt_1_1Chart_1_1WAxis.html#ada743ccf44212cfb1f4a6fa83b79e581"><tt>void setMaximumZoomRange(double size)</tt></a></li>
+      <li><a href="classWt_1_1Chart_1_1WAxis.html#a10742d531e8141474ea707d3c4730386"><tt>double maximumZoomRange() const</tt></a></li>
+    </ul>
+  </dd>
+</dl>
+
+<p>Note that the data must be ordered on X axis value for this feature to work properly.</p>
+
+<h3>Idle timeout</h3>
+
+<p>Added an <tt>&lt;idle-timeout&gt;</tt> option to the configuration (<tt>wt_config.xml</tt>). If set,
+<a href="classWt_1_1WApplication.html#a4e8020fca24d09661ee4bf13400354d9"><tt>WApplication::idleTimeout()</a></tt> will be triggered after the configured number of seconds.</p>
+
+<p>This is intended to prevent unauthorized people from using an active session from a
+device that's been abandoned by the user.</p>
+
+<a href="classWt_1_1WFileDropWidget.html"><h3>WFileDropWidget</h3></a>
+
+<p>Added the ability to set a
+<a href="classWt_1_1WFileDropWidget.html#a9ad41a8986a7bbb25178e0cda850333d">JavaScript filter</a>, e.g. to
+compress uploads client side.
+
+<h3>Miscellaneous improvements</h3>
+
+<ul>
+  <li>Added support for transparency in PDFs</li>
+  <li>Rudimentary support for drawing SVGs on HTML canvas with <tt>WPainter::drawImage</tt></li>
+  <li>
+    <a href="classWt_1_1Dbo_1_1backend_1_1MySQL.html"><tt>Wt::Dbo::backend::MySQL</tt></a>:
+    Fixed compatibility with MySQL Connector/C 8.0 and MariaDB Connector/C 3.0
+  </li>
+  <li>
+    Added <a href="classWt_1_1WEnvironment.html#ad2846f6fd581cd6c8c6933eff0e5fa73"><tt>WEnvironment::timeZoneName()</tt></a>
+  </li>
+  <li>
+    Added <tt>insertTab</tt>, <tt>itemAt</tt> and <tt>currentItem</tt> to
+    <a href="classWt_1_1WTabWidget.html"><tt>WTabWidget</tt></a>
+  </li>
+  <li>
+    Disabled TLS v. 1.0 and 1.1 support
+  </li>
+</ul>
+
+<h2>Release 3.3.10 (April 12, 2018)</h2>
+<p>This release fixes compatibility with Boost 1.66, fixes some bugs, and adds
+some functionality:</p>
+<dl>
+  <dt>WFileUpload: added display widget</dt>
+  <dd>Often, native file upload field look out of place in the rest of a web application's design.
+      A common trick is to hide the file upload field, and add another widget that forwards its click
+      signal to the file upload field. We added
+      <a href="classWt_1_1WFileUpload.html#ab95ec35db690296e848d89a71c23737a">setDisplayWidget()</a>
+      to make it easy to implement that trick.</dd>
+  <dt>WFileDropWidget: added drop indication and global drop</dt>
+  <dd>When <a href="classWt_1_1WFileDropWidget.html#a0c1400a6f7f63eec4bb1cfe30807538e">drop indication</a>
+  is enabled, a WFileDropWidget will be highlighted as soon
+  as a file being dragged enters the page. When
+  <a href="classWt_1_1WFileDropWidget.html#a051b4928cb26446de1eb3617d0f8c954">global drop</a> is enabled, then a drop
+  anywhere on the page will put the file in the WFileDropWidget.</dd>
+  <dt>SqlConnection::executeSqlStateful()</dt>
+  <dd><a href="classWt_1_1Dbo_1_1SqlConnection.html#a7ac824e554074898f10cf75b70a4a6b1">SqlConnection::executeSqlStateful()</a> allows to execute SQL that should be re-executed upon automatic reconnect. Automatic reconnect
+  is currently supported for the <a href="classWt_1_1Dbo_1_1backend_1_1Postgres.html">Postgres</a>
+  and <a href="classWt_1_1Dbo_1_1backend_1_1MySQL.html">MySQL</a> backends.</dd>
+  <dt>WTableView: exposed touch events</dt>
+  <dd>
+    We made it possible to define custom behaviour upon touch events on WTableView, by
+    adding the <a href="classWt_1_1WAbstractItemView.html#acd980e6a9eb110400f334e341f8386a4">touchStarted()</a>,
+    <a href="classWt_1_1WAbstractItemView.html#aaf371c95c294c952be0eaac5b3f56af7">touchMoved()</a>, and
+    <a href="classWt_1_1WAbstractItemView.html#a9f3bd68d6d5ca982b2a22bcd100ea271">touchEnded()</a> signals.
+  </dd>
+</dl>
+
+<h2>Release 3.3.9 (November 21, 2017)</h2>
+<p>This release consists mostly of bug fixes and adds some new features:</p>
+<dl>
+  <dt>Microsoft SQL Server backend for Wt::Dbo (also in Wt 4.0.0)</dt>
+  <dd>We've added Microsoft SQL Server support to Wt::Dbo, making it the sixth
+   backend we support, alongside Sqlite, PostgreSQL, MySQL (and MariaDB),
+   Firebird, and Oracle (not part of the open source Wt because of licensing).
+   With this addition, Wt::Dbo now supports most commonly used relational database
+   management systems. It's based on ODBC and works with Microsoft's ODBC Driver
+   for SQL Server. With unixODBC, Linux and macOS are also supported.</dd>
+  <dt>Added the <tt>--resources-dir</tt> option to wthttp (also in Wt 4.0.0)</dt>
+  <dd>With the <tt>--resources-dir</tt> option, all requests for static resources
+  (in <tt>/resources</tt>) will fallback to this specified folder, so that you don't
+   need to copy or create a symlink to the resources folder anymore. This also means
+   that resources can be selectively overridden, just by creating a file with the same
+   name in the resources folder of your docroot.</dd>
+  <dt>Added the <tt>&lt;max-formdata-size&gt;</tt> configuration option (also in Wt 4.0.1)</dt>
+  <dd>Previously, the maximum size of form data sent by Wt in a single POST request was capped to 5 MiB.
+      In applications with a large amount of forms with a lot of data, that may not be enough,
+      so <tt>&lt;max-formdata-size&gt;</tt> can be used to adjust this independently. Note that
+      the maximum request size (and by consequence, the form data size) is still capped by
+      <tt>&lt;max-request-size&gt;</tt>.</dd>
+</dl>
+
+<h2>Release 3.3.8 (August 16, 2017)</h2>
+<p>
+  This release consists of bug fixes and some new features:
+</p>
+<dl>
+  <dt>
+    OpenID Connect support
+  </dt>
+  <dd>
+    As we've previously announced
+    <a href="https://www.webtoolkit.eu/wt/blog/2017/06/20/announcing_openid_connect_support_in_wt">on our blog</a>,
+    Wt now supports OpenID Connect. All you need to do to use any OpenID Connect based service is
+    configure a <a href="classWt_1_1Auth_1_1OidcService.html">Wt::Auth::OidcService</a>. You can also make your
+    own OpenID Connect identity provider. Check out the accompanying
+    <a href="https://github.com/emweb/wt/tree/master/examples/feature/oidc">OpenID Connect feature example</a>.
+  </dd>
+  <dt>
+    On Windows: font support based on DirectWrite
+  </dt>
+  <dd>
+  <p>Wt 3.3.7 already introduced the Direct2D backend for <a href="classWt_1_1WRasterImage.html">WRasterImage</a>.
+    Wt 3.3.8 further expands
+    on this by adding DirectWrite-based font support. This means that Wt 3.3.8 will be able to
+    select the appropriate fonts for every glyph, without requiring Pango. Pango was always
+    difficult to distribute on Windows, so we never included Pango in the binary distribution, relying on
+    very basic font support instead, replacing unknown characters by question marks. Now, you
+    can expect much better Unicode support with DirectWrite on Windows.</p>
+    <p>This means that the binary release of Wt on Windows is now built with Direct2D and DirectWrite.</p>
+  </dd>
+  <dt>
+    Wt::Dbo: added <a href="structWt_1_1Dbo_1_1sql__value__traits.html">sql_value_traits</a> for
+    <a href="classWt_1_1Json_1_1Object.html">Wt::Json::Object</a> and
+    <a href="classWt_1_1Json_1_1Array.html">Wt::Json::Array</a>.
+  </dt>
+  <dd>
+    <p>Quite often, the need arises to store some unindexed data with arbitrary structure in a database.
+       A common solution is to store JSON as a string. To facilitate this, we've included implementations
+       of <a href="structWt_1_1Dbo_1_1sql_value_traits.html">sql_value_traits</a> for
+       <a href="classWt_1_1Json_1_1Object.html">Wt::Json::Object</a> and
+       <a href="classWt_1_1Json_1_1Array.html">Wt::Json::Array</a> in
+       <tt>Wt/Dbo/WtSqlTraits</tt>. This allows you to store <tt>Wt::Json</tt> Objects and Arrays
+       just like you any other field.</p>
+    <p>Additionally, we've made the <tt>Wt::Json</tt> API a bit more friendly, by adding support
+    for initializer lists (when using C++11), and implicit constructors for
+    <a href="classWt_1_1Json_1_1Value.html">Wt::Json::Value</a>
+    from 
+    <a href="classWt_1_1Json_1_1Object.html">Wt::Json::Object</a> and
+    <a href="classWt_1_1Json_1_1Array.html">Wt::Json::Array</a>.</p>
+  </dd>
+  <dt>
+    Added <tt>&lt;allowed-hosts&gt;</tt> configuration option for CORS
+  </dt>
+  <dd>
+    Wt used to allow almost any origin, to allow Wt applications to be embedded in any page using
+    WidgetSet mode. Although Wt encodes session IDs in URLs rather than cookies by default, this
+    could still pose a security risk in some cases. In Wt 3.3.8, CORS support has been updated:
+    Wt now only allows cross-origin resource sharing for WidgetSet entry points, and trusts no
+    host by default. You can specify the allowed hosts using the <tt>&lt;allowed-hosts&gt;</tt>
+    tag in the configuration file. Using <tt>&lt;allowed-hosts&gt;*&lt;/allowed-hosts&gt;</tt> 
+    restores the old behaviour.
+  </dd>
+  <dt>
+    Other small improvements:
+  </dt>
+  <dd>
+    <ul>
+      <li>Any <tt>boost::asio::io_service</tt> can now be used with <a href="classWt_1_1Http_1_1Client.html">Wt::Http::Client</a>,
+	  instead of just <a href="classWt_1_1WIOService.html">Wt::WIOService</a>.</li>
+      <li>Added support for <tt>PATCH</tt> requests in <a href="classWt_1_1WResource.html">WResource</a> and
+	<a href="classWt_1_1Http_1_1Client.html">Wt::Http::Client</a>,
+	next to <tt>GET</tt>, <tt>POST</tt>, <tt>PUT</tt>, and <tt>DELETE</tt>.
+      <li>wthttp connector: added support for forward secrecy with the <tt>--ssl-prefer-server-ciphers</tt> option.</li>
+      <li>Added the <tt>num-session-threads</tt> configuration parameter, to set the amount of threads per session when
+	  using dedicated process mode. By default, the main process and the session threads use the same amount of threads.</li>
+      <li>The <a href="https://github.com/emweb/wt/tree/master/examples/te-benchmark">te-benchmark</a>
+	  example was added, implementing the TechEmpower framework benchmarks.
+          This example also demonstrates how Wt can be used to write RESTful services. Improved, less verbose, support for
+          RESTful services is planned in a future release.</li>
+      <li>Added <a href="classWt_1_1Dbo_1_1FixedSqlConnectionPool.html#a955e2ce03d8d45e8738f6ff718614601">Wt::Dbo::FixedSqlConnectionPool::setTimeout()</a>, to set a timeout for obtaining a connection.</li>
+      <li>Added <a href="classWt_1_1Dbo_1_1backend_1_1Postgres.html#acb13461474cc43bc9e8a51b844a051f3">Wt::Dbo::backend::Postgres::setTimeout()</a>, to set a timeout for queries.</li>
+      <li>Added libunwind support for printing stacktraces. Enable this with the <tt>ENABLE_UNWIND</tt> CMake option.</li>
+    </ul>
+  </dd>
+</dl>
+
+<h2>Release 3.3.7 (March 31, 2017)</h2>
+<p>
+  This release fixes many bugs, but also introduces some new features:
+</p>
+<dl>
+  <dt>
+    <a href="classWt_1_1WFileDropWidget.html">WFileDropWidget</a>
+  </dt>
+  <dd>
+    The WFileDropWidget is a new widget that allows you to upload a file or multiple files by dragging them onto an area.
+  </dd>
+  <dt>
+    Scroll visibility
+  </dt>
+  <dd>
+    Some applications require you to know whether a widget is currently visible within the viewport, or whether it is
+    scrolled out of view, e.g. to load more content as you scroll down the page. You can now enable scroll visibility
+    detection with
+    <a href="classWt_1_1WWidget.html#a5d403e0390841df77a23445b28044d5d">WWidget::setScrollVisibilityEnabled(bool)</a>,
+    and react to changes in visibility with
+    <a href="classWt_1_1WWidget.html#aa5ce605dd465e06f3e3c2dbce2a4098e">WWidget::scrollVisibilityChanged()</a>.
+    A new scrollvisibility feature example has been added to demonstrate this infinite scrolling application.
+  </dd>
+  <dt>
+    Touch events
+  </dt>
+  <dd>
+    Although Wt already supported touch interactions in the charting library, touch events were previously
+    not exposed by Wt. Now,
+    we've added <a href="classWt_1_1WTouchEvent.html">WTouchEvent</a>, and the touchStarted, touchEnded, and touchMoved
+    events have been added to
+    <a href="classWt_1_1WInteractWidget.html">WInteractWidget</a>.
+    Also, <a href="classWt_1_1WInteractWidget.html#a556c14d02388720b1d95b2149be2e867">draggable widgets</a> can now also
+    be dragged after a long press, and you can select a range using a double touch in
+    <a href="classWt_1_1WTableView.html">WTableView</a> and <a href="classWt_1_1WTreeView.html">WTreeView</a>.
+  </dd>
+  <dt>
+    Combined session tracking mode
+  </dt>
+  <dd>
+    <p>
+      The default session tracking method for Wt is URL rewriting, using JavaScript to hide the session id from
+      the address bar. Alternatively, cookies can be used with the Auto option, falling back to URL rewriting when
+      cookies are not available. However, the cookie-based method did not allow for multiple sessions within the
+      same browser.
+    </p>
+    <p>
+      In order to make the URL rewriting method with requirement 6.5.10 of the PCI Data Security Standard, while not
+      sacrificing the ability to have multiple sessions, a new Combined session tracking strategy has been added.
+      Wt already makes it difficult to steal a session when the session id is discovered, but resources are not as
+      protected. The Combined session tracking strategy uses URL rewriting in combination with a cookie that is shared
+      between sessions as an extra measure against session hijacking. This is the most secure strategy, but it will
+      deny access if cookie support is not available.
+    </p>
+  </dd>
+  <dt>
+    Wraparound for <a href="classWt_1_1WSpinBox.html">WSpinBox</a> and <a href="classWt_1_1WTimeEdit.html">WTimeEdit</a>
+  </dt>
+  <dd>
+    WSpinBox will now wrap around from its maximum to its minimum if you <a href="classWt_1_1WSpinBox.html#a08413e777fefab00e36dc8d6c492bda5">enable wraparound</a>. WTimeEdit will take advantage of this feature by default.
+  </dd>
+  <dt>
+    On Windows: Direct2D implementation of WRasterImage
+  </dt>
+  <dd>
+    We've added another implementation for WRasterImage on Windows: Direct2D. When building Wt, this
+    implementation will be enabled by default. This allows to remove the dependency on GraphicsMagick or
+    Skia on Windows, simplifying the build process.
+  </dd>
+  <dt>
+    Some minor extra features:
+  </dt>
+  <dd>
+    <ul>
+      <li>
+	It's now possible to retrieve a vector of all request headers with <a href="classWt_1_1Http_1_1Request.html#a0afe45bf93bb77270a85c75ca67cd521">Wt::Http::Request::headers()</a> in <a href="classWt_1_1WResource.html#a3a740f8cc29e2e6e4e58defc9c88b8b6">handleRequest</a> when implementing a WResource. It is still recommended, and more efficient, to use <a href="classWt_1_1Http_1_1Request.html#ade2596aa6802a63e21460094ea30a4d9">headerValue</a>, but retrieving a vector of all headers could be useful for debugging purposes.
+      </li>
+      <li>
+	In an effort to reduce the amount of JavaScript generated by the charting API, the
+	<a href="classWt_1_1WPainter.html#abccad19493d7461ca08c9e50ad7326f1">WPainter::drawStencilAlongPath()</a>
+	method was added to WPainter.
+      </li>
+      <li>
+	Previously, WDialogs were movable by default. It's now possible to disable this with 
+	<a href="classWt_1_1WDialog.html#afbccf557a0343591f3087c9a0a9b7051">WDialog::setMovable()</a>.
+      </li>
+    </ul>
+  </dd>
+</dl>
+
 <h2>Release 3.3.6 (July 13, 2016)</h2>
 <p>
  This release has a focus on bug fixes and some new features:

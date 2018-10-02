@@ -98,7 +98,7 @@ void WtReply::reset(const Wt::EntryPoint *ep)
   readMessageCallback_ = 0;
 
   if (httpRequest_)
-    httpRequest_->reset(boost::dynamic_pointer_cast<WtReply>
+    httpRequest_->reset(boost::static_pointer_cast<WtReply>
 			(shared_from_this()), ep);
 
   if (&in_mem_ != in_) {
@@ -181,7 +181,7 @@ void WtReply::consumeRequestBody(Buffer::const_iterator begin,
        * the web application is interested in knowing upload progress
        */
       if (!httpRequest_)
-	httpRequest_ = new HTTPRequest(boost::dynamic_pointer_cast<WtReply>
+	httpRequest_ = new HTTPRequest(boost::static_pointer_cast<WtReply>
 				       (shared_from_this()), entryPoint_);
 
       if (end - begin > 0) {
@@ -227,6 +227,10 @@ void WtReply::consumeRequestBody(Buffer::const_iterator begin,
         }
 
 	in_->seekg(0); // rewind
+#ifdef  __OpenBSD__
+        // openbsd sets error flag after calling seekg(0) on file stream
+        in_->clear();
+#endif
 
 	// Note: this is being posted because we want to release the strand
 	// we currently hold; we need to do that because otherwise the strand
@@ -287,7 +291,7 @@ void WtReply::consumeRequestBody(Buffer::const_iterator begin,
        * We already create the HTTP request because waitMoreData() depends
        * on it.
        */
-      httpRequest_ = new HTTPRequest(boost::dynamic_pointer_cast<WtReply>
+      httpRequest_ = new HTTPRequest(boost::static_pointer_cast<WtReply>
                                      (shared_from_this()), entryPoint_);
       httpRequest_->setWebSocketRequest(true);
       
@@ -306,7 +310,7 @@ void WtReply::consumeRequestBody(Buffer::const_iterator begin,
       in_mem_.write(begin, static_cast<std::streamsize>(end - begin));
 
       if (!httpRequest_) {
-	httpRequest_ = new HTTPRequest(boost::dynamic_pointer_cast<WtReply>
+	httpRequest_ = new HTTPRequest(boost::static_pointer_cast<WtReply>
 				       (shared_from_this()), entryPoint_);
 	httpRequest_->setWebSocketRequest(true);
       }

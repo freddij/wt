@@ -20,6 +20,7 @@
 
 #include "StdWidgetItemImpl.h"
 
+#include <algorithm>
 #include <cctype>
 
 namespace Wt {
@@ -102,12 +103,27 @@ WMenuItem::~WMenuItem()
 {
   if (!contentsLoaded())
     delete contents_;
+  if (contentsContainer_ && contentsContainer_->parent() == 0)
+    delete contentsContainer_;
 
   delete subMenu_;
 }
 
 void WMenuItem::setContents(WWidget *contents, LoadPolicy policy)
 {
+  int menuIdx = -1;
+  WMenu *menu = menu_;
+  if (menu) {
+    menuIdx = menu->indexOf(this);
+    menu->removeItem(this);
+  }
+
+  if (contentsContainer_) {
+    // if contents_ is a child of contentsContainer_,
+    // it will be deleted and trigger contentsDestroyed
+    delete contentsContainer_;
+    contentsContainer_ = 0;
+  }
   delete contents_;
 
   contents_ = contents;
@@ -125,15 +141,17 @@ void WMenuItem::setContents(WWidget *contents, LoadPolicy policy)
   if (contents && policy != PreLoading) {
     contents_ = contents;
 
-    if (!contentsContainer_) {
-      contentsContainer_ = new WContainerWidget();
-      contentsContainer_
-	->setJavaScriptMember("wtResize",
-			      StdWidgetItemImpl::childrenResizeJS());
+    contentsContainer_ = new WContainerWidget();
+    contentsContainer_
+      ->setJavaScriptMember("wtResize",
+                            StdWidgetItemImpl::childrenResizeJS());
 
-      contentsContainer_->resize(WLength::Auto,
-				 WLength(100, WLength::Percentage));
-    }
+    contentsContainer_->resize(WLength::Auto,
+                               WLength(100, WLength::Percentage));
+  }
+
+  if (menu) {
+    menu->insertItem(menuIdx, this);
   }
 }
 
@@ -376,6 +394,9 @@ void WMenuItem::enableAjax()
   if (menu_->internalPathEnabled())
     resetLearnedSlots();
 
+  if (contents_ && !contentsLoaded())
+    contents_->enableAjax();
+
   WContainerWidget::enableAjax();
 }
 
@@ -498,6 +519,11 @@ void WMenuItem::setParentMenu(WMenu *menu)
   menu_ = menu;
 
   updateInternalPath();
+
+  if (menu && menu->isPopup() &&
+      subMenu_ && subMenu_->isPopup()) {
+    subMenu_->webWidget()->setZIndex(std::max(menu->zIndex() + 100, subMenu_->zIndex()));
+  }
 }
 
 WWidget *WMenuItem::contents() const
@@ -581,6 +607,10 @@ void WMenuItem::setMenu(WMenu *menu)
     sparent->removeWidget(subMenu_);
 
   addWidget(subMenu_);
+  if (subMenu_->isPopup() &&
+      parentMenu() && parentMenu()->isPopup()) {
+    subMenu_->webWidget()->setZIndex(std::max(parentMenu()->zIndex() + 100, subMenu_->zIndex()));
+  }
 
   WPopupMenu *popup = dynamic_cast<WPopupMenu *>(subMenu_);
   if (popup) {
@@ -588,6 +618,13 @@ void WMenuItem::setMenu(WMenu *menu)
     setSelectable(false);
     popup->setButton(anchor());
     updateInternalPath();
+    // WPopupMenus are hidden by default, 'show' this WPopupMenu
+    // but not really, since the parent is still hidden. This fixes
+    // an issue where child widgets would remain unexposed, even
+    // though this submenu was open (e.g. in a submenu where items
+    // are checkable)
+    if (dynamic_cast<WPopupMenu*>(menu_))
+      popup->show();
   }
 }
 

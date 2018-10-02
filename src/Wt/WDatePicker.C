@@ -50,7 +50,7 @@ WDatePicker::~WDatePicker()
 void WDatePicker::createDefault(WLineEdit *forEdit)
 {
   WImage *icon = new WImage(WApplication::relativeResourcesUrl() 
-			    + "calendar_edit.png");
+			    + "date.gif");
   icon->resize(16, 16);
   icon->setVerticalAlignment(AlignMiddle);
 
@@ -140,6 +140,7 @@ void WDatePicker::setFromCalendar()
     const WDate& calDate = *calendar_->selection().begin();
 
     forEdit_->setText(calDate.toString(format_));
+    forEdit_->textInput().emit();
     forEdit_->changed().emit();
   }
 

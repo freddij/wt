@@ -31,6 +31,14 @@ namespace Wt {
  * directions, and can therefore be used to display large data models
  * (with large number of columns and rows).
  *
+ * When the view is updated, it will read the data from the model
+ * row per row, starting at the top visible row. If \c (r1,c1) and \c (r2,c2)
+ * are two model indexes of visible table cells, and \c r1 \c < \c r2 or
+ * \c r1 \c == \c r2 and \c c1 \c < \c c2, then the data for the first
+ * model index is read before the second. Keep this into account when
+ * implementing a custom WAbstractItemModel if you want to optimize
+ * performance.
+ *
  * The view may support editing of items, if the model indicates
  * support (see the Wt::ItemIsEditable flag). You can define triggers
  * that initiate editing of an item using setEditTriggers(). The
@@ -159,7 +167,11 @@ private:
 
   JSignal<int, int, std::string, std::string, WMouseEvent> dropEvent_;
   JSignal<int, int, int, int> scrolled_;
-  JSignal<WTouchEvent> itemTouchEvent_;
+  JSignal<WTouchEvent> itemTouchSelectEvent_;
+
+  Signals::connection touchStartConnection_;
+  Signals::connection touchMoveConnection_;
+  Signals::connection touchEndConnection_;
 
   /* Ajax only: First and last columns rendered (this somewhat
    * redundant with the state contained in the widgets, but because
@@ -202,7 +214,7 @@ private:
 
   void renderTable(const int firstRow, const int lastRow, 
 		   const int firstColumn, const int lastColumn);
-  void addSection(const Side side, const std::vector<WWidget *>& items);
+  void addSection(const Side side);
   void removeSection(const Side side);
   int firstRow() const;
   int lastRow() const;
@@ -228,7 +240,10 @@ private:
   void handleDblClick(bool headerColumns, const WMouseEvent& event);
   void handleMouseWentDown(bool headerColumns, const WMouseEvent& event);
   void handleMouseWentUp(bool headerColumns, const WMouseEvent& event);
+  void handleTouchSelected(const WTouchEvent& event);
   void handleTouchStarted(const WTouchEvent& event);
+  void handleTouchMoved(const WTouchEvent& event);
+  void handleTouchEnded(const WTouchEvent& event);
   WModelIndex translateModelIndex(bool headerColumns, const WMouseEvent& event);
   WModelIndex translateModelIndex(const Touch& touch);
 

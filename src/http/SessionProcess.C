@@ -80,7 +80,11 @@ void SessionProcess::asyncExec(const Configuration &config,
   if (!ec)
     acceptor_->listen(0, ec);
 #ifndef WT_WIN32
+#if BOOST_VERSION >= 106600
+  fcntl(acceptor_->native_handle(), F_SETFD, FD_CLOEXEC);
+#else
   fcntl(acceptor_->native(), F_SETFD, FD_CLOEXEC);
+#endif
 #endif // !WT_WIN32
   if (ec) {
     LOG_ERROR("Couldn't create listening socket: " << ec.message());
@@ -203,10 +207,6 @@ void SessionProcess::exec(const Configuration& config,
   ++i;
   c_options[i] = 0;
 
-#if BOOST_VERSION >= 104700
-  io_service_.notify_fork(boost::asio::io_service::fork_prepare);
-#endif
-
   pid_ = fork();
   if (pid_ < 0) {
     LOG_ERROR("failed to fork dedicated session process, error code: " << errno);
@@ -245,11 +245,6 @@ void SessionProcess::exec(const Configuration& config,
     execv(c_options[0], const_cast<char *const *>(c_options));
     // An error occurred, this should not be reached
     exit(1);
-  } else {
-    /* parent process */
-#if BOOST_VERSION >= 104700
-    io_service_.notify_fork(boost::asio::io_service::fork_parent);
-#endif
   }
 
   delete[] c_options;

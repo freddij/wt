@@ -24,6 +24,7 @@
 #include <boost/lexical_cast.hpp>
 
 #ifdef WT_WIN32
+#ifndef __MINGW32__
 // gmtime_r can be defined by mingw
 #ifndef gmtime_r
 static struct tm* gmtime_r(const time_t* t, struct tm* r)
@@ -38,6 +39,7 @@ static struct tm* gmtime_r(const time_t* t, struct tm* r)
   }
 }
 #endif // gmtime_r
+#endif
 #endif
 
 namespace Wt {
@@ -159,9 +161,13 @@ void toText(S& stream, Reply::status_type status)
   case Reply::service_unavailable:
     stream << "503 Service Unavailable\r\n";
     break;
+  case Reply::version_not_supported:
+    stream << "505 HTTP Version Not Supported\r\n";
+    break;
   case Reply::no_status:
   case Reply::internal_server_error:
     stream << "500 Internal Server Error\r\n";
+    break;
   default:
     stream << (int) status << " Unknown\r\n";
   }
@@ -329,12 +335,11 @@ bool Reply::nextBuffers(std::vector<asio::const_buffer>& result)
        * Status line.
        */
 
-      buf_ << "HTTP/";
-      buf_ << request_.http_version_major;
-      buf_ << '.';
-      buf_ << request_.http_version_minor;
-
-      buf_ << ' ';
+      if (http10) {
+        buf_ << "HTTP/1.0 ";
+      } else {
+        buf_ << "HTTP/1.1 ";
+      }
 
       status_strings::toText(buf_, status_);
 
@@ -591,7 +596,8 @@ bool Reply::encodeNextContentBuffer(
       originalSize += bs;
 
       gzipStrm_.avail_in = bs;
-      gzipStrm_.next_in = (unsigned char *)asio::detail::buffer_cast_helper(b);
+      gzipStrm_.next_in = const_cast<unsigned char*>(
+            asio::buffer_cast<const unsigned char*>(b));
 
       unsigned char out[16*1024];
       do {

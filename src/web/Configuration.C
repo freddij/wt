@@ -204,10 +204,12 @@ void Configuration::reset()
   proxyThreads_ = 0;
   maxNumSessions_ = 100;
   maxRequestSize_ = 128 * 1024;
+  maxFormDataSize_ = 5 * 1024 * 1024;
   isapiMaxMemoryRequestSize_ = 128 * 1024;
   sessionTracking_ = URL;
   reloadIsNewSession_ = true;
   sessionTimeout_ = 600;
+  idleTimeout_ = -1;
   bootstrapTimeout_ = 10;
   indicatorTimeout_ = 500;
   doubleClickTimeout_ = 200;
@@ -235,6 +237,8 @@ void Configuration::reset()
   cookieChecks_ = true;
   webglDetection_ = true;
   bootstrapConfig_.clear();
+  numSessionThreads_ = -1;
+  allowedOrigins_.clear();
 
   if (!appRoot_.empty())
     setAppRoot(appRoot_);
@@ -287,6 +291,12 @@ int Configuration::maxNumSessions() const
   return maxRequestSize_;
 }
 
+  
+::int64_t Configuration::maxFormDataSize() const
+{
+  return maxFormDataSize_;
+}
+
 ::int64_t Configuration::isapiMaxMemoryRequestSize() const
 {
   READ_LOCK;
@@ -311,6 +321,12 @@ int Configuration::sessionTimeout() const
   return sessionTimeout_;
 }
 
+int Configuration::idleTimeout() const
+{
+  READ_LOCK;
+  return idleTimeout_;
+}
+
 int Configuration::keepAlive() const
 {
   int timeout = sessionTimeout();
@@ -318,6 +334,16 @@ int Configuration::keepAlive() const
     return 1000000;
   else
     return timeout / 2;
+}
+
+// The multisession cookie timeout should be longer than
+// sessionTimeout() + keepAlive(), to avoid the situation
+// where the session has not timed out yet, but the multi
+// session cookie has expired. Let's just set
+// multiSessionCookieTimeout() to sessionTimeout() * 2
+int Configuration::multiSessionCookieTimeout() const
+{
+  return sessionTimeout() * 2;
 }
 
 int Configuration::bootstrapTimeout() const
@@ -486,6 +512,27 @@ bool Configuration::webglDetect() const
   return webglDetection_;
 }
 
+int Configuration::numSessionThreads() const
+{
+  READ_LOCK;
+  return numSessionThreads_;
+}
+
+bool Configuration::isAllowedOrigin(const std::string &origin) const
+{
+  READ_LOCK;
+  if (allowedOrigins_.size() == 1 &&
+      allowedOrigins_[0] == "*")
+    return true;
+  else {
+    for (std::size_t i = 0; i < allowedOrigins_.size(); ++i) {
+      if (origin == allowedOrigins_[i])
+        return true;
+    }
+    return false;
+  }
+}
+
 bool Configuration::agentIsBot(const std::string& agent) const
 {
   READ_LOCK;
@@ -559,7 +606,25 @@ void Configuration::addEntryPoint(const EntryPoint& ep)
   if (ep.type() == StaticResource)
     ep.resource()->currentUrl_ = ep.path();
 
+  WRITE_LOCK;
   entryPoints_.push_back(ep);
+}
+
+bool Configuration::tryAddResource(const EntryPoint& ep)
+{
+  WRITE_LOCK;
+  for (std::size_t i = 0; i < entryPoints_.size(); ++i) {
+    if (entryPoints_[i].path() == ep.path()) {
+      return false;
+    }
+  }
+
+  if (ep.type() == StaticResource)
+    ep.resource()->currentUrl_ = ep.path();
+
+  entryPoints_.push_back(ep);
+
+  return true;
 }
 
 void Configuration::removeEntryPoint(const std::string& path)
@@ -578,6 +643,73 @@ void Configuration::setDefaultEntryPoint(const std::string& path)
   for (unsigned i = 0; i < entryPoints_.size(); ++i)
     if (entryPoints_[i].path().empty())
       entryPoints_[i].setPath(path);
+}
+
+const EntryPoint *Configuration::matchEntryPoint(const std::string &scriptName,
+                                                                          const std::string &path,
+                                                                          bool matchAfterSlash) const
+{
+  READ_LOCK;
+  // Only one default entry point.
+  if (entryPoints_.size() == 1
+      && entryPoints_[0].path().empty())
+    return &entryPoints_[0];
+
+  // Multiple entry points.
+  const Wt::EntryPoint *bestMatch = 0;
+  std::size_t bestLength = std::string::npos;
+
+  for (std::size_t i = 0; i < entryPoints_.size(); ++i) {
+    const Wt::EntryPoint &ep = entryPoints_[i];
+
+    if (ep.path().empty()) {
+      if (bestLength == std::string::npos)
+	bestMatch = &ep;
+    } else {
+      // Don't even try to match if the length won't be longer than
+      // the existing match
+      if (bestLength == std::string::npos ||
+	  ep.path().length() > bestLength) {
+
+        bool matches = matchesPath(path, ep.path(), matchAfterSlash);
+	if (!scriptName.empty()) {
+	  matches = matchesPath(scriptName + path, ep.path(), matchAfterSlash);
+	}
+
+        if (matches) {
+          bestLength = ep.path().length();
+          bestMatch = &ep;
+        }
+      }
+    }
+  }
+
+  return bestMatch;
+}
+
+bool Configuration::matchesPath(const std::string &path,
+                                const std::string &prefix,
+				bool matchAfterSlash)
+{
+  if (boost::starts_with(path, prefix)) {
+    std::size_t prefixLength = prefix.length();
+
+    if (path.length() > prefixLength) {
+      char next = path[prefixLength];
+
+      if (next == '/')
+	return true;
+      else if (matchAfterSlash) {
+	char last = prefix[prefixLength - 1];
+
+	if (last == '/')
+	  return true;
+      }
+    } else
+      return true;
+  }
+
+  return false;
 }
 
 void Configuration::setSessionTimeout(int sessionTimeout)
@@ -639,6 +771,7 @@ void Configuration::readApplicationSettings(xml_node<> *app)
     if (dedicated) {
       sessionPolicy_ = DedicatedProcess;
       setInt(dedicated, "max-num-sessions", maxNumSessions_);
+      setInt(dedicated, "num-session-threads", numSessionThreads_);
     }
 
     if (shared) {
@@ -660,6 +793,7 @@ void Configuration::readApplicationSettings(xml_node<> *app)
     }
 
     setInt(sess, "timeout", sessionTimeout_);
+    setInt(sess, "idle-timeout", idleTimeout_);
     setInt(sess, "bootstrap-timeout", bootstrapTimeout_);
     setInt(sess, "server-push-timeout", serverPushTimeout_);
     setBoolean(sess, "reload-is-new-session", reloadIsNewSession_);
@@ -669,6 +803,11 @@ void Configuration::readApplicationSettings(xml_node<> *app)
     = singleChildElementValue(app, "max-request-size", "");
   if (!maxRequestStr.empty())
     maxRequestSize_ = boost::lexical_cast< ::int64_t >(maxRequestStr) * 1024;
+
+  std::string maxFormDataStr =
+    singleChildElementValue(app, "max-formdata-size", "");
+  if (!maxFormDataStr.empty())
+    maxFormDataSize_ = boost::lexical_cast< ::int64_t >(maxFormDataStr) * 1024;
 
   std::string debugStr = singleChildElementValue(app, "debug", "");
 
@@ -886,6 +1025,12 @@ void Configuration::readApplicationSettings(xml_node<> *app)
       metaHeaders_.push_back(MetaHeader(type, name, content, "", userAgent));
     }
   }
+
+  std::string allowedOrigins
+    = singleChildElementValue(app, "allowed-origins", "");
+  boost::split(allowedOrigins_, allowedOrigins, boost::is_any_of(","));
+  for (std::size_t i = 0; i < allowedOrigins_.size(); ++i)
+    boost::trim(allowedOrigins_[i]);
 }
 
 void Configuration::rereadConfiguration()

@@ -65,7 +65,7 @@ private:
   std::string favicon_;
 };
 
-typedef std::vector<EntryPoint> EntryPointList;
+typedef std::deque<EntryPoint> EntryPointList;
 
 #endif // WT_TARGET_JAVA
 
@@ -124,9 +124,17 @@ public:
 
 #ifndef WT_TARGET_JAVA
   void addEntryPoint(const EntryPoint& entryPoint);
+  bool tryAddResource(const EntryPoint& entryPoint); // Returns bool indicating success:
+						     // false if entry point existed already
   void removeEntryPoint(const std::string& path);
   void setDefaultEntryPoint(const std::string& path);
-  const EntryPointList& entryPoints() const { return entryPoints_; }
+  // Returns matching entry point and match length
+  const EntryPoint *matchEntryPoint(const std::string &scriptName,
+                                    const std::string &path,
+                                    bool matchAfterSlash) const;
+  static bool matchesPath(const std::string &path,
+                          const std::string &prefix,
+		          bool matchAfterSlash);
   void setNumThreads(int threads);
 #endif // WT_TARGET_JAVA
 
@@ -138,11 +146,14 @@ public:
   int proxyThreads() const;
   int maxNumSessions() const;
   ::int64_t maxRequestSize() const;
+  ::int64_t maxFormDataSize() const;
   ::int64_t isapiMaxMemoryRequestSize() const;
   SessionTracking sessionTracking() const;
   bool reloadIsNewSession() const;
   int sessionTimeout() const;
+  int idleTimeout() const;
   int keepAlive() const; // sessionTimeout() / 2, or if sessionTimeout == -1, 1000000
+  int multiSessionCookieTimeout() const; // sessionTimeout() * 2
   int bootstrapTimeout() const;
   int indicatorTimeout() const;
   int doubleClickTimeout() const;
@@ -153,6 +164,9 @@ public:
   std::string runDirectory() const;
   int sessionIdLength() const;
   std::string sessionIdPrefix() const;
+  int numSessionThreads() const;
+
+  bool isAllowedOrigin(const std::string &origin) const;
 
 #ifndef WT_TARGET_JAVA
   bool readConfigurationProperty(const std::string& name, std::string& value)
@@ -224,10 +238,12 @@ private:
   int             proxyThreads_;
   int             maxNumSessions_;
   ::int64_t       maxRequestSize_;
+  ::int64_t       maxFormDataSize_;
   ::int64_t       isapiMaxMemoryRequestSize_;
   SessionTracking sessionTracking_;
   bool            reloadIsNewSession_;
   int             sessionTimeout_;
+  int             idleTimeout_;
   int             bootstrapTimeout_;
   int		  indicatorTimeout_;
   int             doubleClickTimeout_;
@@ -252,6 +268,9 @@ private:
   bool            sessionIdCookie_;
   bool            cookieChecks_;
   bool            webglDetection_;
+  int             numSessionThreads_;
+
+  std::vector<std::string> allowedOrigins_;
 
   std::vector<BootstrapEntry> bootstrapConfig_;
   std::vector<MetaHeader> metaHeaders_;

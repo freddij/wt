@@ -61,8 +61,7 @@ namespace {
   }
 #endif //HTTP_WITH_SSL
 
-  // The interval to run WebController::expireSessions(),
-  // when running as a dedicated process.
+  // The interval to run WebController::expireSessions()
   static const int SESSION_EXPIRE_INTERVAL = 5;
 }
 
@@ -80,7 +79,11 @@ Server::Server(const Configuration& config, Wt::WServer& wtServer)
     // post_strand_(ioService_),
     tcp_acceptor_(wt_.ioService()),
 #ifdef HTTP_WITH_SSL
+#if BOOST_VERSION >= 106600
+    ssl_context_(asio::ssl::context::sslv23),
+#else
     ssl_context_(wt_.ioService(), asio::ssl::context::sslv23),
+#endif
     ssl_acceptor_(wt_.ioService()),
 #endif // HTTP_WITH_SSL
     connection_manager_(),
@@ -90,7 +93,6 @@ Server::Server(const Configuration& config, Wt::WServer& wtServer)
 {
   if (config.parentPort() != -1) {
     accessLogger_.configure(std::string("-*"));
-    wtServer.dedicatedProcessEnabled_ = true;
   } else if (config.accessLog().empty())
     accessLogger_.setStream(std::cout);
   else if (config.accessLog() == "-")
@@ -135,7 +137,10 @@ Wt::WebController *Server::controller()
 
 void Server::start()
 {
-  if (config_.parentPort() != -1) {
+  if (wt_.configuration().sessionPolicy() != Wt::Configuration::DedicatedProcess ||
+      config_.parentPort() != -1) {
+    // If we have one shared process, or this is the only session process,
+    // run expireSessions() every SESSION_EXPIRE_INTERVAL seconds
     expireSessionsTimer_.expires_from_now(asio_timer_seconds(SESSION_EXPIRE_INTERVAL));
     expireSessionsTimer_.async_wait(boost::bind(&Server::expireSessions, this,
 	  asio::placeholders::error));
@@ -203,6 +208,11 @@ void Server::start()
     if (!config_.sslEnableV3())
       sslOptions |= asio::ssl::context::no_sslv3;
 
+    sslOptions |= asio::ssl::context::no_tlsv1;
+#if BOOST_VERSION >= 105800
+    sslOptions |= asio::ssl::context::no_tlsv1_1;
+#endif // BOOST_VERSION >= 105800
+
     ssl_context_.set_options(sslOptions);
 
     if (config_.sslClientVerification() == "none") {
@@ -227,12 +237,20 @@ void Server::start()
     
     SSL_CTX *native_ctx = nativeContext(ssl_context_);
     
-    if (config_.sslCipherList().size()) {
+#if defined(SSL_CTX_set_ecdh_auto)
+      SSL_CTX_set_ecdh_auto(native_ctx, 1);
+#endif
+    
+    if (!config_.sslCipherList().empty()) {
       if (!SSL_CTX_set_cipher_list(native_ctx, config_.sslCipherList().c_str())) {
         throw Wt::WServer::Exception(
           "failed to select ciphers for cipher list "
           + config_.sslCipherList());
       }
+    }
+    
+    if (config_.sslPreferServerCiphers()) {
+      SSL_CTX_set_options(native_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
     }
 
     std::string sessionId = Wt::WRandom::generateId(SSL_MAX_SSL_SESSION_ID_LENGTH);
@@ -437,7 +455,10 @@ void Server::expireSessions(boost::system::error_code ec)
   LOG_DEBUG_S(&wt_, "expireSession()" << ec.message());
 
   if (!ec) {
-    if (!wt_.expireSessions())
+    bool haveMoreSessions = wt_.expireSessions();
+    if (!haveMoreSessions &&
+	wt_.configuration().sessionPolicy() == Wt::Configuration::DedicatedProcess &&
+	config_.parentPort() != -1)
       wt_.scheduleStop();
     else {
       expireSessionsTimer_.expires_from_now(asio_timer_seconds(SESSION_EXPIRE_INTERVAL));

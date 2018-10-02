@@ -155,10 +155,19 @@ std::string toUTF8(const std::wstring& s)
   result.reserve(s.length() * 3);
 
   char buf[4];
+  uint32_t cp = 0;
   for (std::wstring::const_iterator i = s.begin(); i != s.end(); ++i) {
+    wchar_t c = *i;
+    if (sizeof(wchar_t) == 2 && c >= 0xD800 && c < 0xDC00) {
+      cp = (((uint32_t)(c - 0xD800)) << 10) + 0x10000;
+      continue;
+    } else if (sizeof(wchar_t) == 2 && c >= 0xDC00 && c < 0xE000)
+      cp += (c - 0xDC00);
+    else
+      cp = c;
     char *end = buf;
     try {
-      Wt::rapidxml::xml_document<>::insert_coded_character<0>(end, *i);
+      Wt::rapidxml::xml_document<>::insert_coded_character<0>(end, cp);
       for (char *b = buf; b != end; ++b)
 	result += *b;
     } catch (Wt::rapidxml::parse_error& e) {
@@ -208,11 +217,14 @@ std::wstring fromUTF8(const std::string& s)
 	    cp |= ((unsigned char)s[i+j]) & 0x3F;
 	  }
 
-          wchar_t wc = cp;
-          if ((uint32_t)wc == cp)
-            result += wc;
-          else
+          if (cp >= 0xD800 && cp < 0xE000)
             legal = false;
+          else if (sizeof(wchar_t) == 4 || cp < 0x10000)
+            result += (wchar_t)cp;
+          else {
+            result += (wchar_t)(0xD800 + ((cp - 0x10000) >> 10));
+            result += (wchar_t)(0xDC00 + ((cp - 0x10000) & 0x3FF));
+          }
 	}
       }
       i += 3;
@@ -232,17 +244,20 @@ std::wstring fromUTF8(const std::string& s)
 	     )) {
 	  legal = true;
 
-	  wchar_t cp = ((unsigned char)s[i]) & 0x1F;
+	  uint32_t cp = ((unsigned char)s[i]) & 0x1F;
 	  for (unsigned j = 1; j < 3; ++j) {
 	    cp <<= 6;
 	    cp |= ((unsigned char)s[i+j]) & 0x3F;
 	  }
 
-          wchar_t wc = cp;
-          if (wc == cp)
-            result += wc;
-          else
+          if (cp >= 0xD800 && cp < 0xE000)
             legal = false;
+          else if (sizeof(wchar_t) == 4 || cp < 0x10000)
+            result += (wchar_t)cp;
+          else {
+            result += (wchar_t)(0xD800 + ((cp - 0x10000) >> 10));
+            result += (wchar_t)(0xDC00 + ((cp - 0x10000) & 0x3FF));
+          }
 	}
       }
       i += 2;
@@ -255,17 +270,20 @@ std::wstring fromUTF8(const std::string& s)
 	    ) {
 	  legal = true;
 
-	  wchar_t cp = ((unsigned char)s[i]) & 0x3F;
+	  uint32_t cp = ((unsigned char)s[i]) & 0x3F;
 	  for (unsigned j = 1; j < 2; ++j) {
 	    cp <<= 6;
 	    cp |= ((unsigned char)s[i+j]) & 0x3F;
 	  }
 
-          wchar_t wc = cp;
-          if (wc == cp)
-            result += wc;
-          else
+          if (cp >= 0xD800 && cp < 0xE000)
             legal = false;
+          else if (sizeof(wchar_t) == 4 || cp < 0x10000)
+            result += (wchar_t)cp;
+          else {
+            result += (wchar_t)(0xD800 + ((cp - 0x10000) >> 10));
+            result += (wchar_t)(0xDC00 + ((cp - 0x10000) & 0x3FF));
+          }
 	}
       }
       i += 1;

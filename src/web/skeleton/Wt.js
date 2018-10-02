@@ -23,6 +23,7 @@ window.WT_DECLARE_WT_MEMBER = function(i, type, name, fn)
     _$_WT_CLASS_$_[name] = fn;
   }
 };
+window.WT_DECLARE_WT_MEMBER_BIG = window.WT_DECLARE_WT_MEMBER;
 
 window.WT_DECLARE_APP_MEMBER = function(i, type, name, fn)
 {
@@ -38,6 +39,14 @@ window.WT_DECLARE_APP_MEMBER = function(i, type, name, fn)
   }
 };
 
+_$_$endif_$_();
+
+_$_$ifnot_DYNAMIC_JS_$_();
+window.JavaScriptConstructor = 2;
+window.WT_DECLARE_WT_MEMBER_BIG = function(i, type, name, fn)
+{
+  return fn;
+}
 _$_$endif_$_();
 
 if (!window._$_WT_CLASS_$_)
@@ -163,6 +172,7 @@ this.isAndroid = (agent.indexOf("safari") != -1)
 		  && (agent.indexOf("android") != -1);
 this.isWebKit = (agent.indexOf("applewebkit") != -1);
 this.isGecko = agent.indexOf("gecko") != -1 && !this.isWebKit;
+this.isIOS = agent.indexOf("iphone") != -1 || agent.indexOf("ipad") != -1 || agent.indexOf("ipod") != -1;
 
 this.updateDelay = this.isIE ? 10 : 51;
 
@@ -914,28 +924,50 @@ this.wheelDelta = function(e) {
   return delta;
 };
 
-this.scrollIntoView = function(id) {
-  setTimeout(function() {
-      var hashI = id.indexOf('#');
-      if (hashI != -1)
-	id = id.substr(hashI + 1);
-
-      var obj = document.getElementById(id);
-      if (obj) {
-	/* Locate a suitable ancestor to scroll */
-	var p;
-	for (p = obj.parentNode; p != document.body; p = p.parentNode) {
-	  if (p.scrollHeight > p.clientHeight &&
-	      WT.css(p, 'overflow-y') == 'auto') {
-	    var xy = WT.widgetPageCoordinates(obj, p);
-	    p.scrollTop += xy.y;
-	    return;
-	  }
-	}
-
-	obj.scrollIntoView(true);
+this.scrollHistory = function() {
+  // after any hash change event (forward/backward, or user clicks
+  // on an achor with internal path), the server calls this function
+  // to update the scroll position of the main window
+  try {
+    if (window.history.state) {
+      if (typeof window.history.state.pageXOffset !== UNDEFINED) {
+        // scroll to a historic position where we have been before
+        //console.log("scrollHistory: " + JSON.stringify(window.history.state));
+        window.scrollTo(window.history.state.pageXOffset, window.history.state.pageYOffset);
+      } else {
+        // we went to a new hash (following an anchor, we assume some equivalence
+        // with 'new page') that hasn't been scrolled yet.
+        // Scroll to the top, which may be overriden by scrollIntoView (if the hash
+        // exists somewhere as an object ID)
+        //console.log("scrollHistory: new page scroll strategy");
+        // window.scrollTo(0, 0);
+        WT.scrollIntoView(window.history.state.state);
       }
-    }, 100);
+    }
+  } catch (error) {
+    console.log(error);
+  }
+}
+
+this.scrollIntoView = function(id) {
+  var hashI = id.indexOf('#');
+  if (hashI != -1)
+    id = id.substr(hashI + 1);
+
+  var obj = document.getElementById(id);
+  if (obj) {
+    /* Locate a suitable ancestor to scroll */
+    var p;
+    for (p = obj.parentNode; p != document.body; p = p.parentNode) {
+      if (p.scrollHeight > p.clientHeight &&
+          WT.css(p, 'overflow-y') == 'auto') {
+        var xy = WT.widgetPageCoordinates(obj, p);
+        p.scrollTop += xy.y;
+        return;
+      }
+    }
+    obj.scrollIntoView(true);
+  }
 };
 
 function isHighSurrogate(chr) {
@@ -950,16 +982,18 @@ function toUnicodeSelection(selection, text) {
   var i;
   var start = selection.start;
   var end = selection.end;
-  for (i = 0; i < text.length; ++i) {
-    if (i >= selection.start && i >= selection.end)
-      return {start: start, end: end};
-    if (isHighSurrogate(text.charCodeAt(i)) &&
-	(i + 1) < text.length &&
-	isLowSurrogate(text.charCodeAt(i + 1))) {
-      if (i < selection.start)
-	--start;
-      if (i < selection.end)
-	--end;
+  if (text) {
+    for (i = 0; i < text.length; ++i) {
+      if (i >= selection.start && i >= selection.end)
+	return {start: start, end: end};
+      if (isHighSurrogate(text.charCodeAt(i)) &&
+	  (i + 1) < text.length &&
+	  isLowSurrogate(text.charCodeAt(i + 1))) {
+	if (i < selection.start)
+	  --start;
+	if (i < selection.end)
+	  --end;
+      }
     }
   }
   return {start: start, end: end};
@@ -1072,7 +1106,7 @@ this.setSelectionRange = function(elem, start, end, unicode) {
 this.isKeyPress = function(e) {
   if (!e) e = window.event;
 
-  if (e.altKey || e.ctrlKey || e.metaKey)
+  if (e.ctrlKey || e.metaKey)
     return false;
 
   var charCode = (typeof e.charCode !== UNDEFINED) ? e.charCode : 0;
@@ -1817,10 +1851,14 @@ this.positionAtWidget = function(id, atId, orientation, delta) {
       // with only absolutely positioned children. We are a bit more liberal
       // here to catch other simular situations, and 100px seems like space
       // needed anyway?
+      //
+      // We need to check whether overflowX or overflowY is not visible, because
+      // of an issue on Firefox where clientWidth !== scrollWidth and
+      // clientHeight !== scrollHeight when using the border-collapse CSS property.
       if (WT.css(p, 'display') != 'inline' &&
 	  p.clientHeight > 100 &&
-	  (p.scrollHeight > p.clientHeight ||
-	   p.scrollWidth > p.clientWidth)) {
+	  ((p.scrollHeight > p.clientHeight && getComputedStyle(p).overflowY !== 'visible') ||
+	   (p.scrollWidth > p.clientWidth && getComputedStyle(p).overflowX !== 'visible'))) {
 	break;
       }
 
@@ -1901,6 +1939,59 @@ function gentleURIEncode(s) {
 }
 
 if (html5History) {
+  // we need to update the scroll position at the scroll event,
+  // because we don't have the chance to update the html5history
+  // state anymore at the moment that onPopState() is called.
+  // For navigation, when pushState() is called, the scroll
+  // history can be updated before the pushState() call.
+  function coalesceEvents(callback, minPeriod) {
+    var timer = null;
+    var args = null;
+
+    function dispatch()
+    {
+      callback.apply(null, args);
+      timer = null;
+      args = null;
+    }
+
+    function proxy() {
+      args = arguments;
+
+      if (!timer) {
+        timer = setTimeout(dispatch, minPeriod);
+      }
+    }
+
+    return proxy;
+  }
+
+  function updateScrollHistory() {
+    //console.log("updateScrollHistory");
+    try {
+      var newState = window.history.state;
+      if (window.history.state == null) {
+        // freshly initiated session, no state present yet
+        newState = {};
+        newState.state = "";
+        newState.title = window.document.title;
+      }
+      newState.pageXOffset = window.pageXOffset;
+      newState.pageYOffset = window.pageYOffset;
+      window.history.replaceState(newState, newState.title);
+    } catch (error) {
+      // shouldn't happen
+      console.log(error.toString());
+    }
+  }
+  window.addEventListener('scroll', coalesceEvents(updateScrollHistory, 10));
+
+  // the 'auto' scrollRestoration gives too much flicker, since it
+  // updates the scroll state before the page is updated
+  // Browsers not supporting manual scrollRestoration, the flicker
+  // should not be worse than what it was.
+  window.history.scrollRestoration = 'manual';
+
   this.history = (function()
 {
   var currentState = null, baseUrl = null, ugly = false, cb = null,
@@ -1921,7 +2012,9 @@ if (html5History) {
       saveState(initialState);
 
       function onPopState(event) {
-	var newState = event.state;
+	var newState = null;
+        if (event.state && event.state.state)
+          newState = event.state.state;
 
 	if (newState == null)
 	  newState = stateMap[w.location.pathname + w.location.search];
@@ -1941,6 +2034,7 @@ if (html5History) {
 	  currentState = newState;
 	  onStateChange(currentState != "" ? currentState : "/");
 	}
+        //console.log("onPopState: " + JSON.stringify(window.history.state));
       }
 
       w.addEventListener("popstate", onPopState, false);
@@ -1961,6 +2055,7 @@ _$_$endif_$_();
     },
 
     navigate: function (state, generateEvent) {
+      //console.log("navigate: " + state);
       WT.resolveRelativeAnchors();
 
       currentState = state;
@@ -2000,7 +2095,18 @@ _$_$endif_$_();
       }
 
       try {
-	window.history.pushState(state ? state : "", document.title, url);
+        var historyState = { };
+        historyState.state = state ? state : "";
+        // By not setting historyState.page[XY]Offset, we indicate that
+        // this state change was made by navigation rather than by
+        // the back/forward button
+        // keep title for call to replaceState when page offset is updated
+        historyState.title = document.title;
+        // update scroll position of stack top with the position at the time of leaving the page
+        updateScrollHistory();
+        //console.log("pushState before: " + JSON.stringify(window.history.state));
+	window.history.pushState(historyState, document.title, url);
+        //console.log("pushState after: " + JSON.stringify(window.history.state));
       } catch (error) {
 	/*
 	 * In case we are wrong about our baseUrl or base href
@@ -2009,7 +2115,12 @@ _$_$endif_$_();
 	console.log(error.toString());
       }
 
-      WT.scrollIntoView(state);
+      // We used to call scrollIntoView here. We modified this to have
+      // scrollIntoView called after the server round-trip, so that the
+      // new content is certainly visible before we scroll. This avoids
+      // flicker. If the rendering result was pre-learned client-side,
+      // the page will scroll to the right position only after a server
+      // round-trip, which is not ideal.
 
       if (generateEvent)
 	cb(state);
@@ -2051,8 +2162,6 @@ _$_$endif_$_();
       currentState = state;
 
       w.location.hash = state;
-
-      WT.scrollIntoView(state);
 
       if (generateEvent)
 	cb(state);
@@ -2426,6 +2535,17 @@ function dragStart(obj, e) {
 
   ds.object.onmousemove = dragDrag;
   ds.object.onmouseup = dragEnd;
+  if (document.addEventListener) {
+    // New mousedown (other button): abort drag
+    document.addEventListener('mousedown', dragAbort);
+    // Release mouse outside of page (fires after ds.object.onmouseup)
+    window.addEventListener('mouseup', dragAbort);
+    // Another touch: abort drag
+    document.addEventListener('touchstart', dragAbort);
+  } else {
+    document.attachEvent('onmousedown', dragAbort);
+    window.attachEvent('onmouseup', dragAbort);
+  }
   ds.object.ontouchmove = dragDrag;
   ds.object.ontouchend = dragEnd;
 
@@ -2521,6 +2641,37 @@ function dragDrag(e) {
   return true;
 };
 
+function dragAbort() {
+  WT.capture(null);
+
+  var ds = dragState;
+
+  if (ds.object) {
+    document.body.removeChild(ds.object);
+    ds.objectPrevStyle.parent.appendChild(ds.object);
+
+    ds.object.style.zIndex = ds.objectPrevStyle.zIndex;
+    ds.object.style.position = ds.objectPrevStyle.position;
+    ds.object.style.display = ds.objectPrevStyle.display;
+    ds.object.style.left = ds.objectPrevStyle.left;
+    ds.object.style.top = ds.objectPrevStyle.top;
+    ds.object.className = ds.objectPrevStyle.className;
+
+    ds.object = null;
+    if (touchTimer)
+      clearTimeout(touchTimer);
+  }
+
+  if (document.removeEventListener) {
+    document.removeEventListener('mousedown', dragAbort);
+    window.removeEventListener('mouseup', dragAbort);
+    document.removeEventListener('touchstart', dragAbort);
+  } else {
+    document.detachEvent('onmousedown', dragAbort);
+    window.detachEvent('onmouseup', dragAbort);
+  }
+};
+
 function dragEnd(e) {
   e = e || window.event;
   WT.capture(null);
@@ -2547,26 +2698,15 @@ function dragEnd(e) {
       // could not be dropped, animate it floating back ?
     }
 
-    document.body.removeChild(ds.object);
-    ds.objectPrevStyle.parent.appendChild(ds.object);
-
-    ds.object.style.zIndex = ds.objectPrevStyle.zIndex;
-    ds.object.style.position = ds.objectPrevStyle.position;
-    ds.object.style.display = ds.objectPrevStyle.display;
-    ds.object.style.left = ds.objectPrevStyle.left;
-    ds.object.style.top = ds.objectPrevStyle.top;
-    ds.object.className = ds.objectPrevStyle.className;
-
-    ds.object = null;
-    if (touchTimer)
-      clearTimeout(touchTimer);
+    dragAbort();
   }
 };
 
-function encodeTouches(s, touches, widgetCoords) {
+function encodeTouches(touches, widgetCoords) {
   var i, il, result;
 
-  result = s + "=";
+  result = '';
+
   for (i = 0, il = touches.length; i < il; ++i) {
     var t = touches[i];
     if (i != 0)
@@ -2588,16 +2728,15 @@ function encodeEvent(event, i) {
   var se, result, e;
 
   e = event.event;
-  se = i > 0 ? '&e' + i : '&';
-  result = se + 'signal=' + event.signal;
+  result = ['signal=' + event.signal];
 
   if (event.id) {
-    result += se + 'id=' + event.id
-        + se + 'name=' + encodeURIComponent(event.name)
-        + se + 'an=' + event.args.length;
+    result.push('id=' + event.id,
+                'name=' + encodeURIComponent(event.name),
+                'an=' + event.args.length);
 
     for (var j = 0; j < event.args.length; ++j)
-      result += se + 'a' + j + '=' + encodeURIComponent(event.args[j]);
+      result.push('a' + j + '=' + encodeURIComponent(event.args[j]));
   }
 
   for (var x = 0; x < formObjects.length; ++x) {
@@ -2611,8 +2750,8 @@ function encodeEvent(event, i) {
     else if (el.type == 'select-multiple') {
       for (j = 0, jl = el.options.length; j < jl; j++)
 	if (el.options[j].selected) {
-	  result += se + formObjects[x] + '='
-	    + encodeURIComponent(el.options[j].value);
+          result.push(formObjects[x] + '='
+              + encodeURIComponent(el.options[j].value));
 	}
     } else if (el.type == 'checkbox' || el.type == 'radio') {
       if (el.indeterminate || el.style.opacity == '0.5')
@@ -2631,23 +2770,35 @@ function encodeEvent(event, i) {
 
       if (WT.hasFocus(el)) {
 	var range = WT.getUnicodeSelectionRange(el);
-	result += se + "selstart=" + range.start
-	  + se + "selend=" + range.end;
+        result.push('selstart=' + range.start,
+                    'selend=' + range.end);
       }
     }
 
-    if (v != null)
-      result += se + formObjects[x] + '=' + encodeURIComponent(v);
+    if (v != null) {
+      var component;
+      try {
+	component = encodeURIComponent(v);
+        result.push(formObjects[x] + '=' + component);
+      } catch (e) {
+	// encoding failed, omit this form field
+	// This can happen on Windows when typing a character
+	// with a high and low surrogate pair (like an emoji).
+	// On Chrome and Firefox this is split out into two pairs
+	// of keydown/keyup events instead of one.
+	console.error("Form object " + formObjects[x] + " failed to encode, discarded", e);
+      }
+    }
   }
 
 
   try {
     if (document.activeElement)
-      result += se + "focus=" + document.activeElement.id;
+      result.push('focus=' + document.activeElement.id);
   } catch (e) { }
 
   if (currentHash != null)
-    result += se + '_=' + encodeURIComponent(currentHash);
+    result.push('_=' + encodeURIComponent(currentHash));
 
   if (!e) {
     event.data = result;
@@ -2658,37 +2809,37 @@ function encodeEvent(event, i) {
   while (t && !t.id && t.parentNode)
     t = t.parentNode;
   if (t && t.id)
-    result += se + 'tid=' + t.id;
+    result.push('tid=' + t.id);
 
   try {
     if (typeof e.type === 'string')
-      result += se + 'type=' + e.type;
+      result.push('type=' + e.type);
   } catch (e) {
   }
 
   if (typeof e.clientX !== UNDEFINED && 
       typeof e.clientX !== UNKNOWN)
-    result += se + 'clientX=' + Math.round(e.clientX) + se
-	+ 'clientY=' + Math.round(e.clientY);
+    result.push('clientX=' + Math.round(e.clientX),
+                'clientY=' + Math.round(e.clientY));
 
   var pageCoords = WT.pageCoordinates(e);
   var posX = pageCoords.x;
   var posY = pageCoords.y;
 
   if (posX || posY) {
-    result += se + 'documentX=' + Math.round(posX) + se
-	  + 'documentY=' + Math.round(posY);
-    result += se + 'dragdX=' + Math.round(posX - downX) + se
-	  + 'dragdY=' + Math.round(posY - downY);
+    result.push('documentX=' + Math.round(posX),
+                'documentY=' + Math.round(posY),
+                'dragdX=' + Math.round(posX - downX),
+                'dragdY=' + Math.round(posY - downY));
 
     var delta = WT.wheelDelta(e);
-    result += se + 'wheel=' + Math.round(delta);
+    result.push('wheel=' + Math.round(delta));
   }
 
   if (typeof e.screenX !== UNDEFINED &&
       typeof e.screenX !== UNKNOWN)
-    result += se + 'screenX=' + Math.round(e.screenX) + se
-	+ 'screenY=' + Math.round(e.screenY);
+    result.push('screenX=' + Math.round(e.screenX),
+                'screenY=' + Math.round(e.screenY));
 
   var widgetCoords = { x: 0, y: 0 };
 
@@ -2699,14 +2850,14 @@ function encodeEvent(event, i) {
 
     if (typeof event.object.scrollLeft !== UNDEFINED &&
 	typeof event.object.scrollLeft !== UNKNOWN) {
-      result += se + 'scrollX=' + Math.round(event.object.scrollLeft)
-	+ se + 'scrollY=' + Math.round(event.object.scrollTop)
-	+ se + 'width=' + Math.round(event.object.clientWidth)
-	+ se + 'height=' + Math.round(event.object.clientHeight);
+      result.push('scrollX=' + Math.round(event.object.scrollLeft),
+                  'scrollY=' + Math.round(event.object.scrollTop),
+                  'width=' + Math.round(event.object.clientWidth),
+                  'height=' + Math.round(event.object.clientHeight));
     }
 
-    result += se + 'widgetX=' + Math.round(posX - objX) + se
-	  + 'widgetY=' + Math.round(posY - objY);
+    result.push('widgetX=' + Math.round(posX - objX),
+                'widgetY=' + Math.round(posY - objY));
   }
 
   var button = WT.button(e);
@@ -2718,11 +2869,11 @@ function encodeEvent(event, i) {
     else if (WT.buttons & 4)
       button = 4;
   }
-  result += se + 'button=' + button;
+  result.push('button=' + button);
 
   if (typeof e.keyCode !== UNDEFINED && 
       typeof e.keyCode !== UNKNOWN)
-    result += se + 'keyCode=' + e.keyCode;
+    result.push('keyCode=' + e.keyCode);
 
   if (typeof e.type === 'string') {
     var charCode = 0;
@@ -2733,40 +2884,40 @@ function encodeEvent(event, i) {
       if (e.type === 'keypress')
 	charCode = e.keyCode;
     }
-    result += se + 'charCode=' + charCode;
+    result.push('charCode=' + charCode);
   }
 
   if (typeof e.altKey !== UNDEFINED && 
       typeof e.altKey !== UNKNOWN &&
       e.altKey)
-    result += se + 'altKey=1';
+    result.push('altKey=1');
   if (typeof e.ctrlKey !== UNDEFINED &&
       typeof e.ctrlKey !== UNKNOWN &&
       e.ctrlKey)
-    result += se + 'ctrlKey=1';
+    result.push('ctrlKey=1');
   if (typeof e.metaKey !== UNDEFINED &&
       typeof e.metaKey !== UNKNOWN &&
       e.metaKey)
-    result += se + 'metaKey=1';
+    result.push('metaKey=1');
   if (typeof e.shiftKey !== UNDEFINED && typeof e.shiftKey !== UNKNOWN &&
       e.shiftKey)
-    result += se + 'shiftKey=1';
+    result.push('shiftKey=1');
 
   if (typeof e.touches !== UNDEFINED)
-    result += encodeTouches(se + "touches", e.touches, widgetCoords);
+    result.push('touches=' + encodeTouches(e.touches, widgetCoords));
   if (typeof e.targetTouches !== UNDEFINED)
-    result += encodeTouches(se + "ttouches", e.targetTouches, widgetCoords);
+    result.push('ttouches=' + encodeTouches(e.targetTouches, widgetCoords));
   if (typeof e.changedTouches !== UNDEFINED)
-    result += encodeTouches(se + "ctouches", e.changedTouches, widgetCoords);
+    result.push('ctouches=' + encodeTouches(e.changedTouches, widgetCoords));
 
   if (typeof e.scale !== UNDEFINED &&
       typeof e.scale !== UNKNOWN &&
       e.scale)
-    result += se + "scale=" + e.scale;
+    result.push('scale=' + e.scale);
   if (typeof e.rotation !== UNDEFINED &&
       typeof e.rotation !== UNKNOWN &&
       e.rotation)
-    result += se + "rotation=" + e.rotation;
+    result.push('rotation=' + e.rotation);
 
   event.data = result;
   return event;
@@ -2775,14 +2926,20 @@ function encodeEvent(event, i) {
 var sentEvents = [], pendingEvents = [];
 
 function encodePendingEvents() {
-  var result = '', feedback = false;
+  var se, result = '', feedback = false;
 
   for (var i = 0; i < pendingEvents.length; ++i) {
+    se = i > 0 ? '&e' + i : '&';
     feedback = feedback || pendingEvents[i].feedback;
-    result += pendingEvents[i].data;
+    result += se + pendingEvents[i].data.join(se);
+    if (pendingEvents[i].evAckId < ackUpdateId) {
+      result += se + 'evAckId=' + pendingEvents[i].evAckId;
+    }
   }
 
-  sentEvents = pendingEvents;
+  // With HTTP: sentEvents should be empty before this concat
+  // With WebSockets: sentEvents possibly not empty
+  sentEvents = sentEvents.concat(pendingEvents);
   pendingEvents = [];
 
   return { feedback: feedback, result: result };
@@ -2795,6 +2952,8 @@ var sessionUrl,
   responsePending = null,
   pollTimer = null,
   keepAliveTimer = null,
+  idleTimeout = _$_IDLE_TIMEOUT_$_, /* idle timeout in seconds, null if disabled */
+  idleTimeoutTimer = null,
   commErrors = 0,
   serverPush = false,
   updateTimeout = null;
@@ -2806,8 +2965,12 @@ function quit(hasQuitMessage) {
     clearInterval(keepAliveTimer);
     keepAliveTimer = null;
   }
+  if (idleTimeoutTimer) {
+    clearTimeout(idleTimeoutTimer);
+    idleTimeoutTimer = null;
+  }
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
     pollTimer = null;
   }
   comm.cancel();
@@ -2829,6 +2992,56 @@ function debug(s) {
 function setTitle(title) {
   if (WT.isIEMobile) return;
   document.title = title;
+}
+
+function doIdleTimeout() {
+  self.emit(self, 'Wt-idleTimeout');
+  idleTimeoutTimer = setTimeout(doIdleTimeout, idleTimeout * 1000);
+}
+
+function delayIdleTimeout() {
+  if (idleTimeoutTimer !== null) {
+    clearTimeout(idleTimeoutTimer);
+    idleTimeoutTimer = setTimeout(doIdleTimeout, idleTimeout * 1000);
+  }
+}
+
+function initIdleTimeout() {
+  var opts = true;
+
+  if (idleTimeout === null)
+    return;
+
+  idleTimeoutTimer = setTimeout(doIdleTimeout, idleTimeout * 1000);
+
+  try {
+    var options = Object.defineProperty({}, "passive", {
+      get: function() {
+        //passive supported
+        opts = {
+          capture: true,
+          passive: true
+        };
+      }
+    });
+
+    window.addEventListener('test', options, options);
+    window.removeEventListener('test', options, options);
+  } catch (err) {
+    opts = true; // passive not supported, only specify capture
+  }
+
+  if (document.addEventListener) {
+    document.addEventListener('mousedown', delayIdleTimeout, opts);
+    document.addEventListener('mouseup', delayIdleTimeout, opts);
+    document.addEventListener('wheel', delayIdleTimeout, opts);
+    document.addEventListener('keydown', delayIdleTimeout, opts);
+    document.addEventListener('keyup', delayIdleTimeout, opts);
+    document.addEventListener('touchstart', delayIdleTimeout, opts);
+    document.addEventListener('touchend', delayIdleTimeout, opts);
+    document.addEventListener('pointerdown', delayIdleTimeout, opts);
+    document.addEventListener('pointerup', delayIdleTimeout, opts);
+  }
 }
 
 function load(fullapp) {
@@ -2862,6 +3075,7 @@ function load(fullapp) {
 
   WT.history._initialize();
   initDragDrop();
+  initIdleTimeout();
   loaded = true;
 
   if (fullapp)
@@ -2964,6 +3178,8 @@ function doJavaScript(js) {
 }
 
 function webSocketAckConnect() {
+  nextWsRqId = 0;
+  pendingWsRequests = {};
   websocket.socket.send('&signal=none&connected=' + ackUpdateId);
   websocket.state = WebSocketWorking;
 }
@@ -3027,11 +3243,11 @@ _$_$endif_$_();
   if (websocket.state == WebSocketAckConnect)
     webSocketAckConnect();
 
-  if (serverPush || pendingEvents.length > 0) {
+  if ((serverPush && !waitingForJavaScript) || pendingEvents.length > 0) {
     if (status == 1) {
       var ms = Math.min(120000, Math.exp(commErrors) * 500);
       updateTimeout = setTimeout(function() { sendUpdate(); }, ms);
-    } else
+    } else if (updateTimeout == null)
       sendUpdate();
   }
 };
@@ -3096,6 +3312,7 @@ _$_$endif_$_();
   pendingEvent.signal = signalName;
   pendingEvent.event = window.fakeEvent || e;
   pendingEvent.feedback = feedback;
+  pendingEvent.evAckId = ackUpdateId;
 
   pendingEvents[i] = encodeEvent(pendingEvent, i);
 
@@ -3196,13 +3413,15 @@ _$_$if_WEB_SOCKETS_$_();
 	      if (event.data == "connect") {
 		if (responsePending != null && pollTimer != null) {
 		  clearTimeout(pollTimer);
+		  pollTimer = null;
 		  responsePending.abort();
 		  responsePending = null;
 		}
 
-		if (responsePending)
-		  websocket.state = WebSocketAckConnect;
-		else
+                if (responsePending ||
+                    !$.isEmptyObject(pendingWsRequests))
+                  websocket.state = WebSocketAckConnect;
+                else
 		  webSocketAckConnect();
 	      } else {
 		console.log("WebSocket: was expecting a connect?");
@@ -3282,6 +3501,7 @@ _$_$endif_$_();
 
   if (responsePending != null && pollTimer != null) {
     clearTimeout(pollTimer);
+    pollTimer = null;
     responsePending.abort();
     responsePending = null;
   }
@@ -3292,11 +3512,13 @@ _$_$endif_$_();
       updateTimeoutStart = (new Date).getTime();
     } else if (commErrors) {
       clearTimeout(updateTimeout);
+      updateTimeout = null;
       sendUpdate();
     } else {
       var diff = (new Date).getTime() - updateTimeoutStart;
       if (diff > WT.updateDelay) {
 	clearTimeout(updateTimeout);
+	updateTimeout = null;
 	sendUpdate();
       }
     }
@@ -3427,12 +3649,12 @@ function sendUpdate() {
       }
     }
 
+    pollTimer
+     = poll ? setTimeout(doPollTimeout, _$_SERVER_PUSH_TIMEOUT_$_) : null;
+
     responsePending = 1;
     responsePending = comm.sendUpdate
       ('request=jsupdate' + data.result, tm, ackUpdateId, -1);
-
-    pollTimer
-     = poll ? setTimeout(doPollTimeout, _$_SERVER_PUSH_TIMEOUT_$_) : null;
   }
 }
 
@@ -3491,6 +3713,7 @@ function emit(object, config) {
     userEvent.args[i-2] = r;
   }
   userEvent.feedback = true;
+  userEvent.evAckId = ackUpdateId;
 
   pendingEvents[ei] = encodeEvent(userEvent, ei);
 
@@ -3528,6 +3751,8 @@ function onJsLoad(path, f) {
     if (jsLibsLoaded[path] === true) {
       waitingForJavaScript = false;
       f();
+      if (!waitingForJavaScript && serverPush)
+        sendUpdate();
     } else
       jsLibsLoaded[path] = f;
     }, 20);
@@ -3543,6 +3768,8 @@ function jsLoaded(path)
     if (typeof jsLibsLoaded[path] !== UNDEFINED) {
       waitingForJavaScript = false;
       jsLibsLoaded[path]();
+      if (!waitingForJavaScript && serverPush)
+	sendUpdate();
     }
     jsLibsLoaded[path] = true;
   }
@@ -3613,7 +3840,7 @@ function ImagePreloader(uris, callback) {
   this.images = [];
 
   if (uris.length == 0)
-    callback(this.images);
+    this.callback(this.images);
   else
     for (var i = 0; i < uris.length; i++)
       this.preload(uris[i]);
@@ -3631,9 +3858,20 @@ ImagePreloader.prototype.preload = function(uri) {
 };
 
 ImagePreloader.prototype.onload = function() {
+  // Called from the image: this = the image
   var preloader = this.imagePreloader;
   if (--preloader.work == 0)
     preloader.callback(preloader.images);
+};
+
+ImagePreloader.prototype.cancel = function() {
+  var images = this.images;
+  for (var i = 0; i < images.length; ++i) {
+    images[i].onload = function(){};
+    images[i].onerror = function(){};
+    images[i].onabort = function(){};
+  }
+  this.callback = function(){};
 };
 
 /////////////////////////////////////////////////////////////////////

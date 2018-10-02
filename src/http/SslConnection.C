@@ -60,7 +60,7 @@ asio::ip::tcp::socket& SslConnection::socket()
 void SslConnection::start()
 {
   boost::shared_ptr<SslConnection> sft 
-    = boost::dynamic_pointer_cast<SslConnection>(shared_from_this());
+    = boost::static_pointer_cast<SslConnection>(shared_from_this());
 
   socket_.async_handshake(asio::ssl::stream_base::server,
 			  strand_.wrap
@@ -98,14 +98,14 @@ void SslConnection::handleHandshake(const asio_error_code& error)
 
 void SslConnection::stop()
 {
-  LOG_DEBUG(socket().native() << ": stop()");
+  LOG_DEBUG(native() << ": stop()");
   finishReply();
-  LOG_DEBUG(socket().native() << ": SSL shutdown");
+  LOG_DEBUG(native() << ": SSL shutdown");
 
   Connection::stop();
   
   boost::shared_ptr<SslConnection> sft 
-    = boost::dynamic_pointer_cast<SslConnection>(shared_from_this());
+    = boost::static_pointer_cast<SslConnection>(shared_from_this());
 
   sslShutdownTimer_.expires_from_now(asio_timer_seconds(1));
   sslShutdownTimer_.async_wait(strand_.wrap(
@@ -125,19 +125,19 @@ void SslConnection::stopNextLayer(const boost::system::error_code& ec)
   // In case of timeout, we will get here twice.
   sslShutdownTimer_.cancel();
   if (ec) {
-    LOG_DEBUG(socket().native() << ": ssl_shutdown failed:"
+    LOG_DEBUG(native() << ": ssl_shutdown failed:"
       << ec.message());
   }
   try {
     if (socket().is_open()) {
       boost::system::error_code ignored_ec;
-      LOG_DEBUG(socket().native() << ": socket shutdown");
+      LOG_DEBUG(native() << ": socket shutdown");
       socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ignored_ec);
-      LOG_DEBUG(socket().native() << "closing socket");
+      LOG_DEBUG(native() << "closing socket");
       socket().close();
     }
   } catch (asio_system_error& e) {
-    LOG_DEBUG(socket().native() << ": error " << e.what());
+    LOG_DEBUG(native() << ": error " << e.what());
   }
 }
 
@@ -151,7 +151,7 @@ void SslConnection::startAsyncReadRequest(Buffer& buffer, int timeout)
   setReadTimeout(timeout);
 
   boost::shared_ptr<SslConnection> sft 
-    = boost::dynamic_pointer_cast<SslConnection>(shared_from_this());
+    = boost::static_pointer_cast<SslConnection>(shared_from_this());
   socket_.async_read_some(asio::buffer(buffer),
 			  strand_.wrap
 			  (boost::bind(&SslConnection::handleReadRequestSsl,
@@ -177,7 +177,7 @@ void SslConnection::startAsyncReadBody(ReplyPtr reply,
 				       Buffer& buffer, int timeout)
 {
   if (state_ & Reading) {
-    LOG_DEBUG(socket().native() << ": state_ = " << state_);
+    LOG_DEBUG(native() << ": state_ = " << state_);
     stop();
     return;
   }
@@ -185,7 +185,7 @@ void SslConnection::startAsyncReadBody(ReplyPtr reply,
   setReadTimeout(timeout);
 
   boost::shared_ptr<SslConnection> sft
-    = boost::dynamic_pointer_cast<SslConnection>(shared_from_this());
+    = boost::static_pointer_cast<SslConnection>(shared_from_this());
   socket_.async_read_some(asio::buffer(buffer),
 			  strand_.wrap
 			  (boost::bind(&SslConnection::handleReadBodySsl,
@@ -201,7 +201,7 @@ void SslConnection::handleReadBodySsl(ReplyPtr reply,
 {
   // See handleReadRequestSsl for explanation
   boost::shared_ptr<SslConnection> sft 
-    = boost::dynamic_pointer_cast<SslConnection>(shared_from_this());
+    = boost::static_pointer_cast<SslConnection>(shared_from_this());
   strand_.post(boost::bind(&SslConnection::handleReadBody,
 			   sft, reply, e, bytes_transferred));
 }
@@ -212,7 +212,7 @@ void SslConnection::startAsyncWriteResponse
      int timeout)
 {
   if (state_ & Writing) {
-    LOG_DEBUG(socket().native() << ": state_ = " << state_);
+    LOG_DEBUG(native() << ": state_ = " << state_);
     stop();
     return;
   }
@@ -220,7 +220,7 @@ void SslConnection::startAsyncWriteResponse
   setWriteTimeout(timeout);
 
   boost::shared_ptr<SslConnection> sft 
-    = boost::dynamic_pointer_cast<SslConnection>(shared_from_this());
+    = boost::static_pointer_cast<SslConnection>(shared_from_this());
   asio::async_write(socket_, buffers,
 		    strand_.wrap
 		    (boost::bind(&SslConnection::handleWriteResponse,

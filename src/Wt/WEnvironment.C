@@ -34,6 +34,24 @@ namespace {
   inline std::string str(const char *s) {
     return s ? std::string(s) : std::string();
   }
+
+  bool isPrivateIP(const std::string &s) {
+    return boost::starts_with(s, "127.") ||
+           boost::starts_with(s, "10.") ||
+           boost::starts_with(s, "192.168.") ||
+           (s.size() >= 7 &&
+            boost::starts_with(s, "172.") &&
+            s[6] == '.' &&
+            ((s[4] == '1' &&
+              s[5] >= '6' &&
+              s[5] <= '9') ||
+             (s[4] == '2' &&
+              s[5] >= '0' &&
+              s[5] <= '9') ||
+             (s[4] == '3' &&
+              s[5] >= '0' &&
+              s[5] <= '1')));
+  }
 }
 
 namespace Wt {
@@ -275,13 +293,7 @@ std::string WEnvironment::getClientAddress(const WebRequest& request,
       boost::trim(result);
 
       if (!result.empty()
-          /* tidak cocok untuk kondisi di Nusantara or use in private networks
-	  && !boost::starts_with(result, "10.")
-	  && !boost::starts_with(result, "172.16.")
-	  && !boost::starts_with(result, "192.168.")
-		  */
-		  && !boost::starts_with(result, "127.")
-	  ) {
+          && !isPrivateIP(result)) {
 	break;
       }
     }
@@ -321,6 +333,10 @@ void WEnvironment::enableAjax(const WebRequest& request)
     timeZoneOffset_ = tzE ? boost::lexical_cast<int>(*tzE) : 0;
   } catch (boost::bad_lexical_cast &e) {
   }
+
+  const std::string *tzSE = request.getParameter("tzS");
+
+  timeZoneName_ = tzSE ? *tzSE : std::string("");
 
   const std::string *hashE = request.getParameter("_");
 
@@ -596,6 +612,8 @@ void WEnvironment::parseCookies(const std::string& cookie,
   boost::split(list, cookie, boost::is_any_of(";"));
   for (unsigned int i = 0; i < list.size(); ++i) {
     std::string::size_type e = list[i].find('=');
+    if (e == std::string::npos)
+      continue;
     std::string cookieName = list[i].substr(0, e);
     std::string cookieValue =
       (e != std::string::npos && list[i].size() > e + 1) ?

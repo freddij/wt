@@ -51,9 +51,6 @@ WT_DECLARE_WT_MEMBER
      scrollTop = headerColumnsContainer.scrollTop
             = contentsContainer.scrollTop;
 
-     if (contentsContainer.scrollTop == 0 && WT.isAndroid)
-       return;
-
      if (contentsContainer.clientWidth && contentsContainer.clientHeight
          && (!scrollToPending)
          && (contentsContainer.scrollTop < scrollY1
@@ -72,7 +69,7 @@ WT_DECLARE_WT_MEMBER
      if ((w - currentWidth) > (scrollX2 - scrollX1)/2 ||
          (h - currentHeight) > (scrollY2 - scrollY1)/2) {
        currentWidth = w; currentHeight = h;
-       var height = o.clientHeight == o.firstChild.clientHeight
+       var height = o.clientHeight == o.firstChild.offsetHeight
          ? -1
          : o.clientHeight;
        APP.emit(el, 'scrolled',
@@ -269,18 +266,18 @@ WT_DECLARE_WT_MEMBER
      }
      if (event.touches.length > 1) {
        clearTimeout(touchStartTimer);
-       touchStartTimer = setTimeout(function(){emitTouchStart(obj, event);}, 1000);
+       touchStartTimer = setTimeout(function(){emitTouchSelect(obj, event);}, 1000);
        touches = event.touches.length;
      }
      else{
        clearTimeout(touchStartTimer);
-       touchStartTimer = setTimeout(function(){emitTouchStart(obj, event);}, 50);
+       touchStartTimer = setTimeout(function(){emitTouchSelect(obj, event);}, 50);
        touches = 1;
      }
    };
 
-   function emitTouchStart(obj, event) {
-     APP.emit(el, { name: 'itemTouchEvent', eventObject: obj, event: event});
+   function emitTouchSelect(obj, event) {
+     APP.emit(el, { name: 'itemTouchSelectEvent', eventObject: obj, event: event});
    };
 
    this.touchMove = function(obj, event) {

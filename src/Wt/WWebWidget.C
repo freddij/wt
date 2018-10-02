@@ -51,9 +51,10 @@ std::vector<WWidget *> WWebWidget::emptyWidgetList_;
 
 const char *WWebWidget::FOCUS_SIGNAL = "focus";
 const char *WWebWidget::BLUR_SIGNAL = "blur";
+const int WWebWidget::DEFAULT_BASE_Z_INDEX = 100;
 
 #ifndef WT_TARGET_JAVA
-const std::bitset<35> WWebWidget::AllChangeFlags = std::bitset<35>()
+const std::bitset<36> WWebWidget::AllChangeFlags = std::bitset<36>()
   .set(BIT_HIDDEN_CHANGED)
   .set(BIT_GEOMETRY_CHANGED)
   .set(BIT_FLOAT_SIDE_CHANGED)
@@ -82,6 +83,7 @@ WWebWidget::LayoutImpl::LayoutImpl()
     clearSides_(0),
     minimumWidth_(0),
     minimumHeight_(0),
+    baseZIndex_(DEFAULT_BASE_Z_INDEX),
     zIndex_(0),
     verticalAlignment_(AlignBaseline)
 { 
@@ -125,14 +127,13 @@ WWebWidget::OtherImpl::OtherImpl(WWebWidget *const self)
     childrenChanged_(self),
     scrollVisibilityMargin_(0),
     scrollVisibilityChanged_(self),
-    jsScrollVisibilityChanged_(self, "scrollVisibilityChanged")
+    jsScrollVisibilityChanged_(new JSignal<bool>(self, "scrollVisibilityChanged"))
 {
-  jsScrollVisibilityChanged_.connect(self, &WWebWidget::jsScrollVisibilityChanged);
+  jsScrollVisibilityChanged_->connect(self, &WWebWidget::jsScrollVisibilityChanged);
 }
 
 WWebWidget::OtherImpl::~OtherImpl()
 {
-  delete id_;
   delete attributes_;
   delete jsMembers_;
   delete jsStatements_;
@@ -140,6 +141,8 @@ WWebWidget::OtherImpl::~OtherImpl()
   delete dropSignal2_;
   delete acceptedDropMimeTypes_;
   delete resized_;
+  delete jsScrollVisibilityChanged_;
+  delete id_;
 }
 
 WWebWidget::WWebWidget(WContainerWidget *parent)
@@ -188,10 +191,22 @@ void WWebWidget::setId(const std::string& id)
   if (!otherImpl_)
     otherImpl_ = new OtherImpl(this);
 
+  WApplication* app = WApplication::instance();
+  for (std::size_t i = 0; i < jsignals_.size(); ++i) {
+    EventSignalBase* signal = jsignals_[i];
+    if (signal->isExposedSignal())
+      app->removeExposedSignal(signal);
+  }
+
   if (!otherImpl_->id_)
     otherImpl_->id_ = new std::string();
-
   *otherImpl_->id_ = id;
+
+  for (std::size_t i = 0; i < jsignals_.size(); ++i) {
+    EventSignalBase* signal = jsignals_[i];
+    if (signal->isExposedSignal())
+      app->addExposedSignal(signal);
+  }
 }
 
 void WWebWidget::setSelectable(bool selectable)
@@ -699,10 +714,11 @@ void WWebWidget::calcZIndex()
     int maxZ = 0;
     for (unsigned i = 0; i < children.size(); ++i) {
       WWebWidget *wi = children[i]->webWidget();
-      maxZ = std::max(maxZ, wi->zIndex());
+      if (wi->baseZIndex() <= baseZIndex())
+        maxZ = std::max(maxZ, wi->zIndex());
     }
 
-    layoutImpl_->zIndex_ = maxZ + 100;
+    layoutImpl_->zIndex_ = std::max(baseZIndex(), maxZ + 100);
   }
 }
 
@@ -1046,6 +1062,8 @@ void WWebWidget::setDeferredToolTip(bool enable, TextFormat textFormat)
 
     if (!lookImpl_->toolTip_)
       lookImpl_->toolTip_ = new WString();
+    else
+      *lookImpl_->toolTip_ = WString();
 
     lookImpl_->toolTipTextFormat_ = textFormat;
 
@@ -1560,7 +1578,9 @@ void WWebWidget::updateDom(DomElement& element, bool all)
           LOAD_JAVASCRIPT(app, "js/ToolTip.js", "toolTip", wtjs10);
 
 	  WString tooltipText = *lookImpl_->toolTip_;
-	  if (lookImpl_->toolTipTextFormat_ != XHTMLUnsafeText) {
+          if (lookImpl_->toolTipTextFormat_ == PlainText) {
+            tooltipText = escapeText(*lookImpl_->toolTip_);
+          } else if (lookImpl_->toolTipTextFormat_ == XHTMLText) {
 	    bool res = removeScript(tooltipText);
 	    if (!res) {
 	      tooltipText = escapeText(*lookImpl_->toolTip_);
@@ -1786,7 +1806,9 @@ void WWebWidget::updateDom(DomElement& element, bool all)
 	 * Not using visibility: delay changing the display property
 	 */
 	WStringStream ss;
-	ss << WT_CLASS << ".animateDisplay('" << id()
+	ss << WT_CLASS << ".animateDisplay("
+	   << app->javaScriptClass()
+	   << ",'" << id()
 	   << "'," << transientImpl_->animation_.effects().value()
 	   << "," << (int)transientImpl_->animation_.timingFunction()
 	   << "," << transientImpl_->animation_.duration()
@@ -2217,6 +2239,12 @@ DomElement *WWebWidget::createDomElement(WApplication *app)
 
 bool WWebWidget::domCanBeSaved() const
 {
+  if (children_ != 0) {
+    for (unsigned i = 0; i < children_->size(); ++i)
+      if (!((*children_)[i]->webWidget()->domCanBeSaved()))
+	return false;
+  }
+  
   return true;
 }
 
@@ -2671,6 +2699,32 @@ void WWebWidget::jsScrollVisibilityChanged(bool visible)
   flags_.set(BIT_IS_SCROLL_VISIBLE, visible);
   if (otherImpl_)
     otherImpl_->scrollVisibilityChanged_.emit(visible);
+}
+
+void WWebWidget::setThemeStyleEnabled(bool enabled)
+{
+  flags_.set(BIT_THEME_STYLE_DISABLED, !enabled);
+}
+
+bool WWebWidget::isThemeStyleEnabled() const
+{
+  return !flags_.test(BIT_THEME_STYLE_DISABLED);
+}
+
+int WWebWidget::baseZIndex() const
+{
+  if (!layoutImpl_)
+    return DEFAULT_BASE_Z_INDEX;
+  else
+    return layoutImpl_->baseZIndex_;
+}
+
+void WWebWidget::setBaseZIndex(int zIndex)
+{
+  if (!layoutImpl_)
+    layoutImpl_ = new LayoutImpl();
+
+  layoutImpl_->baseZIndex_ = zIndex;
 }
 
 }

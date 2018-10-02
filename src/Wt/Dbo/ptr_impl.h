@@ -113,6 +113,21 @@ void MetaDbo<C>::bindId(SqlStatement *statement, int& column)
 }
 
 template <class C>
+void MetaDbo<C>::bindModifyId(SqlStatement *statement, int& column)
+{
+  Impl::MappingInfo *mapping = session()->template getMapping<C>();
+
+  SaveBaseAction action(*this, *mapping, statement, column);
+
+  field(action, id_,
+	mapping->naturalIdFieldName, mapping->naturalIdFieldSize);
+
+  action.visitAuxIds(*obj_);
+
+  column = action.column();
+}
+
+template <class C>
 void MetaDbo<C>::bindId(std::vector<Impl::ParameterBase *>& parameters)
 {
   parameters.push_back(new Impl::Parameter<typename dbo_traits<C>::IdType>(id_));
@@ -379,7 +394,7 @@ const C *ptr<C>::operator->() const
   const C *v = get();
 
   if (!v)
-    throw Exception("Wt::Dbo::ptr: null dereference");
+    throw Exception("Wt::Dbo::ptr<" + std::string(typeid(C).name()) + ">: null dereference");
 
   return v;
 }
