@@ -551,12 +551,12 @@ std::string WTransform::jsValue() const
 
   WStringStream ss;
   ss << '[';
-  ss << Utils::round_js_str(m_[0], 3, buf) << ',';
-  ss << Utils::round_js_str(m_[2], 3, buf) << ',';
-  ss << Utils::round_js_str(m_[1], 3, buf) << ',';
-  ss << Utils::round_js_str(m_[3], 3, buf) << ',';
-  ss << Utils::round_js_str(m_[4], 3, buf) << ',';
-  ss << Utils::round_js_str(m_[5], 3, buf) << ']';
+  ss << Utils::round_js_str(m_[0], 16, buf) << ',';
+  ss << Utils::round_js_str(m_[2], 16, buf) << ',';
+  ss << Utils::round_js_str(m_[1], 16, buf) << ',';
+  ss << Utils::round_js_str(m_[3], 16, buf) << ',';
+  ss << Utils::round_js_str(m_[4], 16, buf) << ',';
+  ss << Utils::round_js_str(m_[5], 16, buf) << ']';
   return ss.str();
 }
 
@@ -584,6 +584,21 @@ void WTransform::assignFromJSON(const Json::Value &value)
   } catch (std::exception &e) {
     LOG_ERROR("Couldn't convert JSON to WTransform: " + std::string(e.what()));
   }
+}
+
+bool WTransform::closeTo(const WTransform &other) const
+{
+  if (isJavaScriptBound() || other.isJavaScriptBound())
+    return false;
+
+  static const double EPS = 1E-12;
+
+  return std::fabs(m_[0] - other.m_[0]) <= EPS &&
+         std::fabs(m_[1] - other.m_[1]) <= EPS &&
+         std::fabs(m_[2] - other.m_[2]) <= EPS &&
+         std::fabs(m_[3] - other.m_[3]) <= EPS &&
+         std::fabs(m_[4] - other.m_[4]) <= EPS &&
+         std::fabs(m_[5] - other.m_[5]) <= EPS;
 }
 
 }

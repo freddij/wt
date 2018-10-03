@@ -62,6 +62,7 @@ const char *WInteractWidget::F10_PRESS_SIGNAL = "M_f10press";
 const char *WInteractWidget::F11_PRESS_SIGNAL = "M_f11press";
 const char *WInteractWidget::F12_PRESS_SIGNAL = "M_f12press";
 const char *WInteractWidget::PLUS_PRESS_SIGNAL = "M_pluspress";
+const char *WInteractWidget::NUMERICPLUS_PRESS_SIGNAL = "M_numericpluspress";
 const char *WInteractWidget::MINUS_PRESS_SIGNAL = "M_minuspress";
 const char *WInteractWidget::MULTIPLY_PRESS_SIGNAL = "M_multiplypress";
 const char *WInteractWidget::DIVISION_PRESS_SIGNAL = "M_divisionpress";
@@ -106,7 +107,7 @@ void WInteractWidget::setPopup(bool popup)
   if (popup && wApp->environment().ajax()) {
     clicked().connect
       ("function(o,e) { "
-       " if (" WT_CLASS ".WPopupWidget) {"
+       " if (" WT_CLASS ".WPopupWidget && $.data(o,'popup')) {"
            WT_CLASS ".WPopupWidget.popupClicked = o;"
            "$(document).trigger('click', e);"
            WT_CLASS ".WPopupWidget.popupClicked = null;"
@@ -309,6 +310,11 @@ EventSignal<>& WInteractWidget::plusPressed()
   return *voidEventSignal(PLUS_PRESS_SIGNAL, true);
 }
 
+EventSignal<>& WInteractWidget::numericplusPressed()
+{
+  return *voidEventSignal(NUMERICPLUS_PRESS_SIGNAL, true);
+}
+
 EventSignal<>& WInteractWidget::minusPressed()
 {
   return *voidEventSignal(MINUS_PRESS_SIGNAL, true);
@@ -460,6 +466,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
   EventSignal<> *f11Press = voidEventSignal(F11_PRESS_SIGNAL, false);
   EventSignal<> *f12Press = voidEventSignal(F12_PRESS_SIGNAL, false);
   EventSignal<> *plusPress = voidEventSignal(PLUS_PRESS_SIGNAL, false);
+  EventSignal<> *numericplusPress = voidEventSignal(NUMERICPLUS_PRESS_SIGNAL, false);
   EventSignal<> *minusPress = voidEventSignal(MINUS_PRESS_SIGNAL, false);
   EventSignal<> *multiplyPress = voidEventSignal(MULTIPLY_PRESS_SIGNAL, false);
   EventSignal<> *divisionPress = voidEventSignal(DIVISION_PRESS_SIGNAL, false);
@@ -504,6 +511,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     || (f11Press && f11Press->needsUpdate(all))
     || (f12Press && f12Press->needsUpdate(all))
     || (plusPress && plusPress->needsUpdate(all))
+    || (numericplusPress && numericplusPress->needsUpdate(all))
     || (minusPress && minusPress->needsUpdate(all))
     || (multiplyPress && multiplyPress->needsUpdate(all))
     || (divisionPress && divisionPress->needsUpdate(all))
@@ -912,10 +920,20 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       }
       plusPress->updateOk();
     }
+    if (numericplusPress) {
+      if (numericplusPress->needsUpdate(all)) {
+	actions.push_back
+	  (DomElement::EventAction("(e.charCode == 43)", /* keyCode html */
+				   numericplusPress->javaScript(),
+				   numericplusPress->encodeCmd(),
+				   numericplusPress->isExposedSignal()));
+      }
+      numericplusPress->updateOk();
+    }
     if (minusPress) {
       if (minusPress->needsUpdate(all)) {
 	actions.push_back
-	  (DomElement::EventAction("(e.keyCode && e.keyCode == 189)", 
+	  (DomElement::EventAction("((e.keyCode && e.keyCode == 189) || e.charCode == 45)", 
 				   minusPress->javaScript(),
 				   minusPress->encodeCmd(),
 				   minusPress->isExposedSignal()));
@@ -925,7 +943,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     if (multiplyPress) {
       if (multiplyPress->needsUpdate(all)) {
 	actions.push_back
-	  (DomElement::EventAction("(e.keyCode && e.shiftKey && e.keyCode == 56)", 
+	  (DomElement::EventAction("(e.keyCode && e.shiftKey && (e.keyCode == 56 || e.charCode == 42))", 
 				   multiplyPress->javaScript(),
 				   multiplyPress->encodeCmd(),
 				   multiplyPress->isExposedSignal()));
@@ -935,7 +953,7 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
     if (divisionPress) {
       if (divisionPress->needsUpdate(all)) {
 	actions.push_back
-	  (DomElement::EventAction("(e.keyCode && e.keyCode == 191)",
+	  (DomElement::EventAction("(e.keyCode && (e.keyCode == 191 || e.charCode == 47))",
 				   divisionPress->javaScript(),
 				   divisionPress->encodeCmd(),
 				   divisionPress->isExposedSignal()));

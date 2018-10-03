@@ -14,6 +14,7 @@ IF(ENABLE_LIBWTTEST)
     private/HttpTest.C
     private/CExpressionParserTest.C
     private/I18n.C
+    private/UrlManipTest.C
     render/BlockCssPropertyTest.C
     render/CssParserTest.C
     render/CssSelectorTest.C
@@ -40,11 +41,15 @@ IF(ENABLE_LIBWTTEST)
      )
   ENDIF(WT_HAS_WRASTERIMAGE)
 
-  ADD_EXECUTABLE(test
+  ADD_EXECUTABLE(test.wt
     ${TEST_SOURCES}
   )
 
-  TARGET_LINK_LIBRARIES(test wt wttest ${BOOST_FS_LIB})
+  IF(MSVC)
+	SET_TARGET_PROPERTIES(test.wt PROPERTIES FOLDER "test")
+  ENDIF(MSVC)
+
+  TARGET_LINK_LIBRARIES(test.wt wt wttest ${BOOST_FS_LIB} ${CMAKE_THREAD_LIBS_INIT} ${RT_LIBRARY})
 
   IF(ENABLE_LIBWTDBO)
     # Test all dbo backends
@@ -54,9 +59,11 @@ IF(ENABLE_LIBWTTEST)
       dbo/DboTest2.C
       dbo/DboTest3.C
       dbo/DboTest4.C
+      dbo/DboTest5.C
       dbo/Benchmark.C
       dbo/Benchmark2.C
       dbo/JsonTest.C
+      dbo/JsonTest2.C
       dbo/AuthDboTest.C
       dbo/DboTestCompositeKey.C
       private/DboImplTest.C
@@ -66,6 +73,9 @@ IF(ENABLE_LIBWTTEST)
       ADD_EXECUTABLE(       test.postgres ${DBO_TEST_SOURCES})
       TARGET_LINK_LIBRARIES(test.postgres wt wttest wtdbo wtdbopostgres)
       SET_TARGET_PROPERTIES(test.postgres PROPERTIES COMPILE_FLAGS "-DPOSTGRES")
+	  IF(MSVC)
+	    SET_TARGET_PROPERTIES(test.postgres PROPERTIES FOLDER "test")
+      ENDIF(MSVC)
       MESSAGE("** Testing Wt::Dbo using Postgres backend")
     ENDIF(HAVE_POSTGRES)
 
@@ -73,6 +83,9 @@ IF(ENABLE_LIBWTTEST)
       ADD_EXECUTABLE(       test.mysql ${DBO_TEST_SOURCES})
       TARGET_LINK_LIBRARIES(test.mysql wt wttest wtdbo wtdbomysql)
       SET_TARGET_PROPERTIES(test.mysql PROPERTIES COMPILE_FLAGS "-DMYSQL")
+	  IF(MSVC)
+	    SET_TARGET_PROPERTIES(test.mysql PROPERTIES FOLDER "test")
+      ENDIF(MSVC)
       MESSAGE("** Testing Wt::Dbo using Mysql backend")
     ENDIF(HAVE_MYSQL)
 
@@ -80,6 +93,9 @@ IF(ENABLE_LIBWTTEST)
       ADD_EXECUTABLE(       test.oracle ${DBO_TEST_SOURCES})
       TARGET_LINK_LIBRARIES(test.oracle wt wttest wtdbo wtdbooracle)
       SET_TARGET_PROPERTIES(test.oracle PROPERTIES COMPILE_FLAGS "-DORACLE")
+	  IF(MSVC)
+	    SET_TARGET_PROPERTIES(test.oracle PROPERTIES FOLDER "test")
+      ENDIF(MSVC)
       MESSAGE("** Testing Wt::Dbo using Oracle backend")
     ENDIF(HAVE_ORACLE)
 
@@ -87,6 +103,9 @@ IF(ENABLE_LIBWTTEST)
       ADD_EXECUTABLE(       test.firebird ${DBO_TEST_SOURCES})
       TARGET_LINK_LIBRARIES(test.firebird wt wttest wtdbo wtdbofirebird)
       SET_TARGET_PROPERTIES(test.firebird PROPERTIES COMPILE_FLAGS "-DFIREBIRD")
+	  IF(MSVC)
+	    SET_TARGET_PROPERTIES(test.firebird PROPERTIES FOLDER "test")
+      ENDIF(MSVC)
       MESSAGE("** Testing Wt::Dbo using Firebird backend")
     ENDIF(HAVE_FIREBIRD)
 
@@ -94,8 +113,21 @@ IF(ENABLE_LIBWTTEST)
       ADD_EXECUTABLE(       test.sqlite3 ${DBO_TEST_SOURCES})
       TARGET_LINK_LIBRARIES(test.sqlite3 wt wttest wtdbo wtdbosqlite3)
       SET_TARGET_PROPERTIES(test.sqlite3 PROPERTIES COMPILE_FLAGS "-DSQLITE3")
+	  IF(MSVC)
+	    SET_TARGET_PROPERTIES(test.sqlite3 PROPERTIES FOLDER "test")
+      ENDIF(MSVC)
       MESSAGE("** Testing Wt::Dbo using Sqlite3 backend")
     ENDIF(HAVE_SQLITE)
+
+    IF(HAVE_MSSQLSERVER)
+      ADD_EXECUTABLE(       test.mssqlserver ${DBO_TEST_SOURCES})
+      TARGET_LINK_LIBRARIES(test.mssqlserver wt wttest wtdbo wtdbomssqlserver)
+      SET_TARGET_PROPERTIES(test.mssqlserver PROPERTIES COMPILE_FLAGS "-DMSSQLSERVER")
+      IF(MSVC)
+        SET_TARGET_PROPERTIES(test.mssqlserver PROPERTIES FOLDER "test")
+      ENDIF(MSVC)
+      MESSAGE("** Testing Wt::Dbo using Microsoft SQL Server backend")
+    ENDIF(HAVE_MSSQLSERVER)
   ENDIF(ENABLE_LIBWTDBO)
 
   INCLUDE_DIRECTORIES(${WT_SOURCE_DIR}/src)
@@ -111,7 +143,10 @@ IF(ENABLE_LIBWTTEST)
     )
 
     ADD_EXECUTABLE(test.http ${HTTP_TEST_SOURCES})
-    TARGET_LINK_LIBRARIES(test.http wt wthttp)    
+    TARGET_LINK_LIBRARIES(test.http wt wthttp ${CMAKE_THREAD_LIBS_INIT} ${RT_LIBRARY})
+	IF(MSVC)
+	  SET_TARGET_PROPERTIES(test.http PROPERTIES FOLDER "test")
+    ENDIF(MSVC)  
   ENDIF(CONNECTOR_HTTP)
 
 ELSE (ENABLE_LIBWTTEST)

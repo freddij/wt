@@ -40,6 +40,12 @@
 #define DESCRIBE(w) "(fixme)"
 #endif
 
+#ifdef WT_TARGET_JAVA
+#define RETHROW(e) throw e
+#else
+#define RETHROW(e) throw
+#endif
+
 namespace {
 
   bool isAbsoluteUrl(const std::string& url) {
@@ -449,6 +455,7 @@ void WebRenderer::serveBootstrap(WebResponse& response)
   boot.setVar("BOOT_STYLE_URL", bootStyleUrl.str());
 
   setCaching(response, false);
+  response.addHeader("X-Frame-Options", "SAMEORIGIN");
 
   std::string contentType = "text/html; charset=UTF-8";
 
@@ -539,7 +546,10 @@ void WebRenderer::setHeaders(WebResponse& response, const std::string mimeType)
       header << " Domain=" << cookie.domain << ';';
 
     if (cookie.path.empty())
-      header << " Path=" << session_.env().deploymentPath() << ';';
+      if (!session_.env().publicDeploymentPath_.empty())
+	header << " Path=" << session_.env().publicDeploymentPath_ << ';';
+      else
+        header << " Path=" << session_.env().deploymentPath() << ';';
     else
       header << " Path=" << cookie.path << ';';
 
@@ -582,7 +592,7 @@ std::string WebRenderer::sessionUrl() const
   if (isAbsoluteUrl(result))
     return session_.appendSessionQuery(result);
   else {
-    // Wt.js will prepand the correct deployment path
+    // Wt.js will prepend the correct deployment path
     return session_.appendSessionQuery(".").substr(1);
   }
 }
@@ -646,8 +656,8 @@ void WebRenderer::updateMultiSessionCookie(const WebRequest &request)
   Configuration &conf = session_.controller()->configuration();
   setCookie("ms" + request.scriptName(),
             session_.multiSessionId(),
-            WDateTime::currentDateTime().addSecs(conf.sessionTimeout()),
-            "", session_.env().deploymentPath(),
+            WDateTime::currentDateTime().addSecs(conf.multiSessionCookieTimeout()),
+            "", "",
             session_.env().urlScheme() == "https");
 }
 
@@ -814,11 +824,6 @@ void WebRenderer::collectJavaScript()
   collectedJS1_ << invisibleJS_.str();
   invisibleJS_.clear();
 
-  if (conf.inlineCss())
-    app->styleSheet().javaScriptUpdate(app, collectedJS1_, false);
-
-  loadStyleSheets(collectedJS1_, app);
-
   if (app->bodyHtmlClassChanged_) {
     bool widgetset = session_.type() == WidgetSet;
     std::string op = widgetset ? "+=" : "=";
@@ -882,6 +887,11 @@ void WebRenderer::collectJavaScript()
       collectedJS1_ << app->javaScriptClass()
 		    << "._p_.update(null, 'none', null, false);";
   }
+
+  if (conf.inlineCss())
+    app->styleSheet().javaScriptUpdate(app, collectedJS1_, false);
+
+  loadStyleSheets(collectedJS1_, app);
 
   if (app->autoJavaScriptChanged_) {
     collectedJS1_ << app->javaScriptClass()
@@ -1010,6 +1020,9 @@ void WebRenderer::serveMainscript(WebResponse& response)
 
     script.setVar("KEEP_ALIVE", boost::lexical_cast<std::string>(conf.keepAlive()));
 
+    script.setVar("IDLE_TIMEOUT", conf.idleTimeout() != -1 ?
+        boost::lexical_cast<std::string>(conf.idleTimeout()) : std::string("null"));
+
     script.setVar("INDICATOR_TIMEOUT", conf.indicatorTimeout());
     script.setVar("SERVER_PUSH_TIMEOUT", conf.serverPushTimeout() * 1000);
 
@@ -1106,6 +1119,8 @@ void WebRenderer::serveMainscript(WebResponse& response)
     currentFormObjectsList_.clear();
     collectJavaScript();
     updateLoadIndicator(collectedJS1_, app, true);
+
+    clearStubbedWidgets();
 
     LOG_DEBUG("js: " << collectedJS1_.str() << collectedJS2_.str());
 
@@ -1285,6 +1300,12 @@ void WebRenderer::serveMainAjax(WStringStream& out)
   loadScriptLibraries(out, app, librariesLoaded);
 }
 
+bool WebRenderer::jsSynced() const
+{
+  return collectedJS1_.empty() &&
+         collectedJS2_.empty();
+}
+
 void WebRenderer::setJSSynced(bool invisibleToo)
 {
   LOG_DEBUG("setJSSynced: " << invisibleToo);
@@ -1384,6 +1405,7 @@ void WebRenderer::serveMainpage(WebResponse& response)
   if (!redirect.empty()) {
     response.setStatus(302); // Should be 303 in fact ?
     response.setRedirect(redirect);
+    setHeaders(response, "text/html; charset=UTF-8");
     return;
   }
 
@@ -1650,62 +1672,69 @@ void WebRenderer::collectJavaScriptUpdate(WStringStream& out)
 
   out << '{';
 
-  if (session_.sessionIdChanged_) {
-    if (session_.hasSessionIdInUrl()) {
-      if (app->environment().ajax() &&
-	  !app->environment().internalPathUsingFragments()) {
-	streamRedirectJS(out, app->url(app->internalPath()));
-	// better would be to use HTML5 history in this case but that would
-	// need some minor JavaScript reorganizations
-      } else {
-	streamRedirectJS(out, app->url(app->internalPath()));
+  try {
+    if (session_.sessionIdChanged_) {
+      if (session_.hasSessionIdInUrl()) {
+        if (app->environment().ajax() &&
+            !app->environment().internalPathUsingFragments()) {
+          streamRedirectJS(out, app->url(app->internalPath()));
+          // better would be to use HTML5 history in this case but that would
+          // need some minor JavaScript reorganizations
+        } else {
+          streamRedirectJS(out, app->url(app->internalPath()));
+        }
+        out << '}';
+        return;
       }
-      out << '}';
-      return;
+
+      out << session_.app()->javaScriptClass()
+          << "._p_.setSessionUrl("
+          << WWebWidget::jsStringLiteral(sessionUrl())
+          << ");";
+      session_.sessionIdChanged_ = false;
     }
 
-    out << session_.app()->javaScriptClass()
-	<< "._p_.setSessionUrl("
-	<< WWebWidget::jsStringLiteral(sessionUrl())
-	<< ");";
-    session_.sessionIdChanged_ = false;
-  }
+    collectJS(&out);
 
-  collectJS(&out);
+    /*
+     * Now, as we have cleared and recorded all JavaScript changes that were
+     * caused by the actual code, we can learn stateless code and collect
+     * changes that result.
+     */
 
-  /*
-   * Now, as we have cleared and recorded all JavaScript changes that were
-   * caused by the actual code, we can learn stateless code and collect
-   * changes that result.
-   */
+    preLearnStateless(app, out);
 
-  preLearnStateless(app, out);
-
-  if (formObjectsChanged_) {
-    std::string formObjectsList = createFormObjectsList(app);
-    if (formObjectsList != currentFormObjectsList_) {
-      currentFormObjectsList_ = formObjectsList;
-      out << app->javaScriptClass()
-	  << "._p_.setFormObjects([" << currentFormObjectsList_ << "]);";
+    if (formObjectsChanged_) {
+      std::string formObjectsList = createFormObjectsList(app);
+      if (formObjectsList != currentFormObjectsList_) {
+        currentFormObjectsList_ = formObjectsList;
+        out << app->javaScriptClass()
+            << "._p_.setFormObjects([" << currentFormObjectsList_ << "]);";
+      }
     }
+
+    app->streamAfterLoadJavaScript(out);
+
+    if (app->isQuited())
+      out << app->javaScriptClass() << "._p_.quit("
+          << (app->quittedMessage_.empty() ? "null" :
+              app->quittedMessage_.jsStringLiteral()) + ");";
+
+    if (updateLayout_) {
+      out << "window.onresize();";
+      updateLayout_ = false;
+    }
+
+    app->renderedInternalPath_ = app->newInternalPath_;
+
+    updateLoadIndicator(out, app, false);
+  } catch (const std::exception &e) {
+    out << '}';
+    RETHROW(e);
+  } catch (...) {
+    out << '}';
+    throw;
   }
-
-  app->streamAfterLoadJavaScript(out);
-
-  if (app->isQuited())
-    out << app->javaScriptClass() << "._p_.quit("
-	<< (app->quittedMessage_.empty() ? "null" :
-	    app->quittedMessage_.jsStringLiteral()) + ");";
-
-  if (updateLayout_) {
-    out << "window.onresize();";
-    updateLayout_ = false;
-  }
-
-  app->renderedInternalPath_ = app->newInternalPath_;
-
-  updateLoadIndicator(out, app, false);
-
   out << '}';
 }
 
@@ -2035,6 +2064,27 @@ std::string WebRenderer::headDeclarations() const
 void WebRenderer::addWsRequestId(int wsRqId)
 {
   wsRequestsToHandle_.push_back(wsRqId);
+}
+
+void WebRenderer::markAsStubbed(const WWidget *widget)
+{
+  stubbedWidgets_.push_back(widget);
+}
+
+bool WebRenderer::wasStubbed(const WObject *widget) const
+{
+  for (std::size_t i = 0; i < stubbedWidgets_.size(); ++i) {
+    if (stubbedWidgets_[i] == widget)
+      return true;
+  }
+  return false;
+}
+
+void WebRenderer::clearStubbedWidgets()
+{
+  if (expectedAckId_ - scriptId_ > 1) {
+    stubbedWidgets_.clear();
+  }
 }
 
 }

@@ -680,6 +680,21 @@ public:
 
   /*! \brief "Resolves" a relative URL taking into account internal paths.
    *
+   * This resolves the relative URL against the base path of the application,
+   * so that it will point to the correct path regardless of the current internal
+   * path, e.g. if the application is deployed at <tt>%http://example.com/one</tt>
+   * and we're at the internal path <tt>/two/</tt>, so that the full URL is
+   * <tt>%http://example.com/one/two/</tt>, the output of the input URL <tt>three</tt>
+   * will point to <tt>%http://example.com/three</tt>, and not
+   * <tt>%http://example.com/one/two/three</tt>.
+   *
+   * If the given url is the empty string, the result will point to the base path
+   * of the application.
+   *
+   * See the table below for more examples.
+   *
+   * <h3>When you would want to use resolveRelativeUrl:</h3>
+   *
    * Using HTML5 History API or in a plain HTML session (without ugly
    * internal paths), the internal path is present as a full part of
    * the URL. This has a consequence that relative URLs, if not dealt
@@ -701,9 +716,30 @@ public:
    * unchanged.
    *
    * For URLs passed to the %Wt API (and of which the library knows it
-   * is represents a URL) this method is called internally by the
+   * represents a URL) this method is called internally by the
    * library. But it may be useful for URLs which are set e.g. inside
    * a WTemplate.
+   *
+   * <h3>Examples</h3>
+   *
+   * Note that whether the deployment path and entry point ends with a slash is significant.
+   * Below are some examples with the
+   * <span style="color:red;">deployment path</span> in <span style="color:red;">red</span>
+   * and the <span style="color:blue;">internal path</span> in <span style="color:blue;">blue</span>.
+   *
+   * <table>
+   * <tr><th>Current full path</th><th>url argument</th><th>Result points to</th></tr>
+   * <tr><td rowspan="4"><tt>%http://example.com</tt><tt style="color:red;">/foo/bar</tt><tt style="color:blue;">/internal/path</tt><br />Deployment path: <tt style="color:red;">/foo/bar</tt> (no slash at the end)<br />Internal path: <tt style="color:blue;">/internal/path</tt></td>
+   * <td><i>(empty string)</i></td><td><tt>%http://example.com/foo/bar</tt></tr>
+   * <tr><td><tt>.</tt></td><td><tt>%http://example.com/foo/</tt></td></tr>
+   * <tr><td><tt>./</tt></td><td><tt>%http://example.com/foo/</tt></td></tr>
+   * <tr><td><tt>../</tt></td><td><tt>%http://example.com/</tt></td></tr>
+   * <tr><td rowspan="4"><tt>%http://example.com</tt><tt style="color:red;">/foo/bar</tt><tt style="color:magenta;font-weight:bold;">/</tt><tt style="color:blue;">internal/path</tt><br />Deployment path: <tt style="color:red;">/foo/bar/</tt> (with slash at the end)<br />Internal path: <tt style="color:blue;">/internal/path</tt><br />Note that the slash between the deployment path and the internal path is shared</td>
+   * <td><i>(empty string)</i></td><td><tt>%http://example.com/foo/bar/</tt></tr>
+   * <tr><td><tt>.</tt></td><td><tt>%http://example.com/foo/bar/</tt></td></tr>
+   * <tr><td><tt>./</tt></td><td><tt>%http://example.com/foo/bar/</tt></td></tr>
+   * <tr><td><tt>../</tt></td><td><tt>%http://example.com/foo/</tt></td></tr>
+   * </table>
    */
   std::string resolveRelativeUrl(const std::string& url) const;
 
@@ -826,6 +862,9 @@ public:
    * can still use normal anchors in your HTML. Internal path changes
    * initiated in the browser to paths that do not start with a '/'
    * are ignored.
+   *
+   * The \p emitChange parameter determines whether calling this
+   * method causes the internalPathChanged() signal to be emitted.
    *
    * \sa bookmarkUrl(), internalPath(), internalPathChanged()
    *
@@ -1468,6 +1507,10 @@ public:
    */
   bool requireJQuery(const std::string& url);
 
+  /*! \brief Returns whether a custom JQuery library is used.
+   *
+   * \sa requireJQuery(const std::string& url)
+   */
   bool customJQuery() const { return customJQuery_; }
 
   /*! \brief Sets the name of the application JavaScript class.
@@ -2168,6 +2211,86 @@ protected:
    */
   virtual void unload();
 
+  /*! \brief Idle timeout handler
+   *
+   * \if cpp
+   * If <tt>idle-timeout</tt> is set in the configuration, this method is called when
+   * the user seems idle for the number of seconds set in <tt>idle-timeout</tt>.
+   * \elseif java
+   * If idle timeout is set in the configuration
+   * ({@link Configuration#setIdleTimeout(int)}), this
+   * method is called when the user seems idle for the number of seconds set as the
+   * idle timeout.
+   * \endif
+   *
+   * This feature can be useful in security sensitive applications
+   * to prevent unauthorized users from taking over the session
+   * of a user that has moved away from or left behind
+   * the device from which they are accessing the %Wt application.
+   *
+   * The default implementation logs that a timeout has occurred,
+   * and calls quit().
+   *
+   * This method can be overridden to specify different timeout behaviour,
+   * e.g. to show a dialog that a user's session has expired, or that
+   * the session is about to expire.
+   *
+   * \if cpp
+   *
+   * Example for an expiration dialog:
+   *
+   * \code
+   * class MyApplication : public Wt::WApplication {
+   * public:
+   *   MyApplication(Wt::WEnvironment &env)
+   *    : WApplication(env),
+   *      idleTimeoutDialog_(0)
+   *   { }
+   *
+   * protected:
+   *   virtual void idleTimeout()
+   *   {
+   *     if (idleTimeoutDialog_)
+   *       return; // Prevent multiple dialogs
+   *
+   *     idleTimeoutDialog_ = new Wt::WDialog("Idle timeout", this);
+   *     new Wt::WText("This session will automatically quit in 1 minute, "
+   *                   "press 'abort' to continue using the application", idleTimeoutDialog_->contents());
+   *     Wt::WPushButton *btn = new Wt::WPushButton("abort", idleTimeoutDialog_->footer());
+   *     btn->clicked().connect(std::bind([this]{
+   *       delete idleTimeoutDialog_;
+   *       idleTimeoutDialog_ = 0;
+   *     }));
+   *     Wt::WTimer *timer = new Wt::WTimer(idleTimeoutDialog_);
+   *     timer->setInterval(60000);
+   *     timer->setSingleShot(true);
+   *     timer->timeout().connect(std::bind([this]{
+   *       quit();
+   *     }));
+   *     timer->start();
+   *     idleTimeoutDialog_->show();
+   *   }
+   *
+   * private:
+   *   Wt::WDialog *idleTimeoutDialog_;
+   * };
+   * \endcode
+   *
+   * \endif
+   *
+   * \note The events currently counted as user activity are:
+   *  - mousedown
+   *  - mouseup
+   *  - wheel
+   *  - keydown
+   *  - keyup
+   *  - touchstart
+   *  - touchend
+   *  - pointerdown
+   *  - pointerup
+   */
+  virtual void idleTimeout();
+
   /**
    * @brief handleJavaScriptError print javaScript errors to log file.
    * You may want to overwrite it to render error page for example.
@@ -2296,6 +2419,7 @@ private:
 
   EventSignal<> showLoadingIndicator_, hideLoadingIndicator_;
   JSignal<> unloaded_;
+  JSignal<> idleTimeout_;
 
   std::map<const char *, boost::any> objectStore_;
 
@@ -2342,6 +2466,7 @@ private:
   void setExposeSignals(bool how) { exposeSignals_ = how; }
   bool exposeSignals() const { return exposeSignals_; }
   void doUnload();
+  void doIdleTimeout();
 
 #ifndef WT_TARGET_JAVA
   int startWaitingAtLock();

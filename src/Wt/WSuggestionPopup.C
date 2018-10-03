@@ -11,11 +11,13 @@
 #include "Wt/WContainerWidget"
 #include "Wt/WFormWidget"
 #include "Wt/WLogger"
+#include "Wt/WLineEdit"
 #include "Wt/WSuggestionPopup"
 #include "Wt/WStringStream" 
 #include "Wt/WStringListModel"
 #include "Wt/WTemplate"
 #include "Wt/WText"
+#include "Wt/WTextArea"
 
 #include "WebUtils.h"
 
@@ -114,7 +116,7 @@ void WSuggestionPopup::init()
 
   impl_->escapePressed().connect(this, &WWidget::hide);
 
-  filter_.connect(this, &WSuggestionPopup::doFilter);
+  filter_.connect(this, &WSuggestionPopup::scheduleFilter);
   jactivated_.connect(this, &WSuggestionPopup::doActivate);
 
 }
@@ -143,6 +145,8 @@ void WSuggestionPopup::render(WFlags<RenderFlag> flags)
 {
   if (flags & RenderFull)
     defineJavaScript();
+
+  doFilter(currentInputText_);
 
   WPopupWidget::render(flags);
 }
@@ -354,6 +358,12 @@ void WSuggestionPopup::setFilterLength(int length)
   filterLength_ = length;
 }
 
+void WSuggestionPopup::scheduleFilter(std::string input)
+{
+  currentInputText_ = input;
+  scheduleRender();
+}
+
 void WSuggestionPopup::doFilter(std::string input)
 {
   filtering_ = true;
@@ -402,8 +412,16 @@ void WSuggestionPopup::doActivate(std::string itemId, std::string editId)
     if (impl_->widget(i)->id() == itemId) {
 	  currentItem_ = i;
       activated_.emit(i, edit);
-	  if(edit)
-		edit->changed().emit();
+      if(edit) {
+        WLineEdit *le = dynamic_cast<WLineEdit*>(edit);
+        WTextArea *ta = dynamic_cast<WTextArea*>(edit);
+        if (le) {
+          le->textInput().emit();
+        } else if (ta) {
+          ta->textInput().emit();
+        }
+        edit->changed().emit();
+      }
       return;
     }
   currentItem_ = -1;

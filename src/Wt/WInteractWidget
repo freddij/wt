@@ -152,6 +152,7 @@ public:
   EventSignal<>& f11Pressed();
   EventSignal<>& f12Pressed();
   EventSignal<>& plusPressed();
+  EventSignal<>& numericplusPressed();
   EventSignal<>& minusPressed();
   EventSignal<>& multiplyPressed();
   EventSignal<>& divisionPressed();
@@ -459,6 +460,7 @@ private:
   static const char *F11_PRESS_SIGNAL;
   static const char *F12_PRESS_SIGNAL;
   static const char *PLUS_PRESS_SIGNAL;
+  static const char *NUMERICPLUS_PRESS_SIGNAL;
   static const char *MINUS_PRESS_SIGNAL;
   static const char *MULTIPLY_PRESS_SIGNAL;
   static const char *DIVISION_PRESS_SIGNAL;

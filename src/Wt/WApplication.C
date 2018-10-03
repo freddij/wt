@@ -14,6 +14,7 @@
 #include "Wt/WDate"
 #include "Wt/WDefaultLoadingIndicator"
 #include "Wt/WException"
+#include "Wt/WFileUpload"
 #include "Wt/WMemoryResource"
 #include "Wt/WServer"
 #include "Wt/WTimer"
@@ -127,6 +128,7 @@ WApplication::WApplication(const WEnvironment& env
     showLoadingIndicator_("showload", this),
     hideLoadingIndicator_("hideload", this),
     unloaded_(this, "Wt-unload"),
+    idleTimeout_(this, "Wt-idleTimeout"),
     soundManager_(0)
 {
   session_->setApplication(this);
@@ -286,6 +288,7 @@ WApplication::WApplication(const WEnvironment& env
   setLoadingIndicator(new WDefaultLoadingIndicator());
 
   unloaded_.connect(this, &WApplication::doUnload);
+  idleTimeout_.connect(this, &WApplication::doIdleTimeout);
 }
 
 void WApplication::setJavaScriptClass(const std::string& javaScriptClass)
@@ -441,18 +444,35 @@ std::string WApplication::relativeResourcesUrl()
   WApplication *app = WApplication::instance(); 
   const Configuration& conf = app->environment().server()->configuration(); 
   const std::string* path = conf.property(WApplication::RESOURCES_URL);
-  /*
-   * Arghll... we should in fact know when we need the absolute URL: only
-   * when we are having a request.pathInfo().
-   */
-  if (path == "/wt-resources/") {
-    std::string result = app->environment().deploymentPath();
-    if (!result.empty() && result[result.length() - 1] == '/')
-      return result + path->substr(1);
+
+  int version;
+  try {
+    version = app->environment().server()->servletMajorVersion();
+  } catch (std::exception& e) {
+    return "";
+  }
+  if (version < 3) {
+    /*
+     * Arghll... we should in fact know when we need the absolute URL: only
+     * when we are having a request.pathInfo().
+     */
+    if (path == "/wt-resources/") {
+      std::string result = app->environment().deploymentPath();
+      if (!result.empty() && result[result.length() - 1] == '/')
+	return result + path->substr(1);
+      else
+	return result + *path;
+    } else 
+      return *path;
+  } else { // from v3.0, resources can be deployed in META-INF of a jar-file
+    std::string contextPath = app->environment().server()->getContextPath();
+    if (!contextPath.empty() && contextPath[contextPath.length() - 1] != '/')
+      contextPath = contextPath + "/";
+    if (path == "/wt-resources/")
+      return  contextPath + path->substr(1);
     else
-      return result + *path;
-  } else 
-    return *path;
+      return contextPath + *path;
+  }
 #endif // WT_TARGET_JAVA
 }
 
@@ -512,13 +532,17 @@ void WApplication::removeGlobalWidget(WWidget *)
 
 bool WApplication::isExposed(WWidget *w) const
 {
-  /*
-   * This not right: for example a file upload is usually hidden while
-   * uploading, but then could not receive the upload event
-
-  if (!w->isVisible())
+  // File uploads may be hidden when emitting a signal.
+  // Other hidden widgets should not emit signals.
+  // FIXME: fix all of the regressions caused by this check
+  //        before reenabling it
+#if 0
+  if (!w->isVisible() && !dynamic_cast<WFileUpload*>(w))
     return false;
-  */
+#endif
+
+  if (!w->isEnabled())
+    return false;
 
   if (w == domRoot_)
     return true;
@@ -751,6 +775,21 @@ void WApplication::unload()
   }
 #endif // WT_TARGET_JAVA
 
+  quit();
+}
+
+void WApplication::doIdleTimeout()
+{
+  const Configuration& conf = environment().server()->configuration();
+
+  if (conf.idleTimeout() != -1)
+    idleTimeout();
+}
+
+void WApplication::idleTimeout()
+{
+  const Configuration& conf = environment().server()->configuration();
+  LOG_INFO("User idle for " << conf.idleTimeout() << " seconds, quitting due to idle timeout");
   quit();
 }
 

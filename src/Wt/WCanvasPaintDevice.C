@@ -136,7 +136,10 @@ void WCanvasPaintDevice::render(const std::string& paintedWidgetJsRef,
 
   WStringStream tmp;
 
-  tmp << paintedWidgetJsRef << ".repaint=function(){";
+  tmp << ";" // Extra ; to make sure that JavaScript interprets the next thing as
+             // a separate statement (for when ; was forgotten in another doJavaScript call)
+         "(function(){";
+  tmp << "var pF=function(){";
 
   tmp <<
     "if(" << canvasVar << ".getContext){";
@@ -164,26 +167,47 @@ void WCanvasPaintDevice::render(const std::string& paintedWidgetJsRef,
 
   tmp << "};";
 
-  if (!images_.empty()) {
-    tmp << "var o=" << paintedWidgetJsRef << ";";
-    tmp << "o.cancelPreloader();";
-    tmp << "if(" << canvasVar << ".getContext){";
-    tmp << "o.imagePreloader=new Wt._p_.ImagePreloader([";
-
-    for (unsigned i = 0; i < images_.size(); ++i) {
-      if (i != 0)
-        tmp << ',';
-      tmp << '\'' << images_[i] << '\'';
-    }
-
-    tmp << "],function(images){";
-    tmp << "var o=" << paintedWidgetJsRef << ";";
-    tmp << "o.images=images;";
-    tmp << "o.repaint();";
-    tmp << "});}";
-  } else {
-    tmp << paintedWidgetJsRef << ".repaint();";
+  if (paintUpdate_)
+    tmp << paintedWidgetJsRef << ".repaint=function(){};";
+  else {
+    tmp << paintedWidgetJsRef << ".repaint=pF;";
+    tmp << "pF=function(){"
+        << paintedWidgetJsRef << ".repaint();"
+        << "};";
   }
+
+  tmp << "var o=" << paintedWidgetJsRef << ";";
+  if (!paintUpdate_)
+    tmp << "o.cancelPreloaders();";
+  tmp << "if(" << canvasVar << ".getContext){";
+  tmp << "var l=new ";
+  tmp << wApp->javaScriptClass() << "._p_.ImagePreloader([";
+
+  for (unsigned i = 0; i < images_.size(); ++i) {
+    if (i != 0)
+      tmp << ',';
+    tmp << '\'' << images_[i] << '\'';
+  }
+
+  tmp << "],function(images){"
+           "this.done = true;"
+           "var o=" << paintedWidgetJsRef << ";"
+           "if(o.imagePreloaders.length===0||"
+             "this===o.imagePreloaders[0]){"
+             "o.images=images;"
+             "pF();"
+             "o.imagePreloaders.shift();"
+           "}else{"
+             "while(o.imagePreloaders.length>0&&"
+                   "o.imagePreloaders[0].done){"
+               "o.imagePreloaders[0].callback(o.imagePreloaders[0].images);"
+             "}"
+           "}"
+         "});"
+	 "if(!l.done)"
+	   "o.imagePreloaders.push(l);"
+       "}"
+       "})();";
 
   text->callJavaScript(tmp.str());
 
@@ -629,16 +653,9 @@ void WCanvasPaintDevice::setChanged(WFlags<ChangeFlag> flags)
 void WCanvasPaintDevice::renderTransform(std::stringstream& s,
 					 const WTransform& t)
 {
-  if (t.isJavaScriptBound()) {
-    s << "ctx.setTransform.apply(ctx, " << t.jsRef() << ");";
-  } else if (!(t.isIdentity() && lastTransformWasIdentity_)) {
-    char buf[30];
-    s << "ctx.setTransform(" << Utils::round_js_str(t.m11(), 3, buf) << ",";
-    s			  << Utils::round_js_str(t.m12(), 3, buf) << ",";
-    s			  << Utils::round_js_str(t.m21(), 3, buf) << ",";
-    s			  << Utils::round_js_str(t.m22(), 3, buf) << ",";
-    s			  << Utils::round_js_str(t.m31(), 3, buf) << ",";
-    s                     << Utils::round_js_str(t.m32(), 3, buf) << ");";
+  if (!(t.isIdentity() && lastTransformWasIdentity_)) {
+    s << "ctx.wtTransform=" << t.jsRef() << ';';
+    s << "ctx.setTransform.apply(ctx, ctx.wtTransform);";
   }
   lastTransformWasIdentity_ = t.isIdentity();
 }
@@ -816,28 +833,46 @@ void WCanvasPaintDevice::renderStateChanges(bool resetPathTranslation)
       }
     }
 
+    char buf[30];
+    double lw = painter()->normalizedPenWidth(painter()->pen().width(), true).value();
+
     switch (painter()->pen().style()) {
     case SolidLine:
       js_ << "ctx.setLineDash([]);";
       break;
     case DashLine:
-      js_ << "ctx.setLineDash([4,2]);";
+      js_ << "ctx.setLineDash([";
+      js_ << Utils::round_js_str(lw * 4.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 2.0, 3, buf);
+      js_ << "]);";
       break;
     case DotLine:
-      js_ << "ctx.setLineDash([1,2]);";
+      js_ << "ctx.setLineDash([";
+      js_ << Utils::round_js_str(lw * 1.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 2.0, 3, buf);
+      js_ << "]);";
       break;
     case DashDotLine:
-      js_ << "ctx.setLineDash([4,2,1,2]);";
+      js_ << "ctx.setLineDash([";
+      js_ << Utils::round_js_str(lw * 4.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 2.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 1.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 2.0, 3, buf);
+      js_ << "]);";
       break;
     case DashDotDotLine:
-      js_ << "ctx.setLineDash([4,2,1,2,1,2]);";
+      js_ << "ctx.setLineDash([";
+      js_ << Utils::round_js_str(lw * 4.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 2.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 1.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 2.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 1.0, 3, buf) << ',';
+      js_ << Utils::round_js_str(lw * 2.0, 3, buf);
+      js_ << "]);";
       break;
     case NoPen:
       break;
     }
-
-    char buf[30];
-    double lw = painter()->normalizedPenWidth(painter()->pen().width(), true).value();
 
     js_ << "ctx.lineWidth="
         << Utils::round_js_str(lw, 3, buf)

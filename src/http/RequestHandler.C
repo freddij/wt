@@ -60,31 +60,6 @@ void RequestHandler::setSessionManager(SessionProcessManager *sessionManager)
   sessionManager_ = sessionManager;
 }
 
-bool RequestHandler::matchesPath(const std::string& path,
-				 const std::string& prefix,
-				 bool matchAfterSlash)
-{
-  if (boost::starts_with(path, prefix)) {
-    unsigned prefixLength = prefix.length();
-
-    if (path.length() > prefixLength) {
-      char next = path[prefixLength];
-
-      if (next == '/')
-	return true; 
-      else if (matchAfterSlash) {
-	char last = prefix[prefixLength - 1];
-
-	if (last == '/')
-	  return true;
-      }
-    } else
-      return true;
-  }
-
-  return false;
-}
-
 /*
  * Determine what to do with the request (based on the header),
  * and do it and create a Reply object which will do it.
@@ -99,7 +74,8 @@ ReplyPtr RequestHandler::handleRequest(Request& req,
       && (req.method != "OPTIONS")
       && (req.method != "POST")
       && (req.method != "PUT")
-      && (req.method != "DELETE"))
+      && (req.method != "DELETE")
+      && (req.method != "PATCH"))
     return ReplyPtr(new StockReply(req, Reply::not_implemented, "", config_));
 
   if ((req.http_version_major != 1)
@@ -123,7 +99,7 @@ ReplyPtr RequestHandler::handleRequest(Request& req,
 
   if (!config_.defaultStatic()) {
     for (unsigned i = 0; i < config_.staticPaths().size(); ++i) {
-      if (matchesPath(req.request_path, config_.staticPaths()[i], true)) {
+      if (Wt::Configuration::matchesPath(req.request_path, config_.staticPaths()[i], true)) {
 	isStaticFile = true;
 	break;
       }
@@ -131,31 +107,13 @@ ReplyPtr RequestHandler::handleRequest(Request& req,
   }
 
   if (!isStaticFile) {
-    int bestMatch = -1;
-    std::size_t bestLength = std::string::npos;
+    const Wt::EntryPoint *bestMatch = wtConfig_.matchEntryPoint("", req.request_path, !config_.defaultStatic());
 
-    const Wt::EntryPointList& entryPoints = wtConfig_.entryPoints();
-    for (unsigned i = 0; i < entryPoints.size(); ++i) {
-      const Wt::EntryPoint& ep = entryPoints[i];
+    if (bestMatch) {
+      const Wt::EntryPoint& ep = *bestMatch;
 
-      bool matchesApp = matchesPath(req.request_path,
-				    ep.path(),
-				    !config_.defaultStatic());
-
-      if (matchesApp) {
-	if (bestLength == std::string::npos ||
-	    ep.path().length() > bestLength) {
-	  bestLength = ep.path().length();
-	  bestMatch = i;
-	}
-      }
-    }
-
-    if (bestMatch != -1) {
-      const Wt::EntryPoint& ep = entryPoints[bestMatch];
-
-      if (bestLength != std::string::npos)
-	req.request_extra_path = req.request_path.substr(bestLength);
+      if (!ep.path().empty())
+	req.request_extra_path = req.request_path.substr(ep.path().size());
 
       req.request_path = ep.path();
 

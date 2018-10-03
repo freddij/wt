@@ -51,6 +51,9 @@ IF("${CMAKE_CURRENT_LIST_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
     # We ship libharu as DLL. Compiling/linking against libharu DLL requires
     # this definition to be set.
     ADD_DEFINITIONS(-DHPDF_DLL)
+    # Windows SDK is always multithreaded
+    SET(BOOST_WT_MT_FOUND true)
+    SET(MULTI_THREADED true)
   ENDIF(WIN32)
 ENDIF("${CMAKE_CURRENT_LIST_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
   
@@ -154,8 +157,11 @@ MACRO(WT_ADD_EXAMPLE name)
 
   IF(MSVC)
     SET_TARGET_PROPERTIES(${name} PROPERTIES COMPILE_FLAGS "/W3 /Wp64 /wd4251 /wd4275")
+	SET_TARGET_PROPERTIES(${name} PROPERTIES FOLDER "examples")
   ENDIF(MSVC)
-  TARGET_LINK_LIBRARIES(${name} ${EXAMPLES_CONNECTOR} wt)
+  
+  SET(EXAMPLES_WT_LIB debug wtd optimized wt)
+  TARGET_LINK_LIBRARIES(${name} ${EXAMPLES_CONNECTOR} ${EXAMPLES_WT_LIB})
 
   IF(INSTALL_EXAMPLES)
     # Finding the directory where to install the binary and the wrapper/runner script is tricky 
@@ -197,16 +203,9 @@ MACRO(WT_ADD_EXAMPLE name)
 
       CONFIGURE_FILE(${WT_SOURCE_DIR}/examples/run-example.bat.cmake ${WT_BINARY_DIR}/examples/${EXAMPLESUBDIR}/${EXAMPLENAME}.bat @ONLY)
       INSTALL(PROGRAMS ${WT_BINARY_DIR}/examples/${EXAMPLESUBDIR}/${EXAMPLENAME}.bat DESTINATION bin )
-
-      IF(INSTALL_RESOURCES)
-	INSTALL(DIRECTORY ${WT_SOURCE_DIR}/resources DESTINATION ${EXAMPLES_DESTINATION}/${EXAMPLESUBDIR}/${DOCROOTSUBFOLDER})  # Can't safely make symlinks of Windows
-      ENDIF(INSTALL_RESOURCES)
     ELSE(WIN32)
       CONFIGURE_FILE(${WT_SOURCE_DIR}/examples/run-example.cmake ${WT_BINARY_DIR}/examples/${EXAMPLESUBDIR}/${EXAMPLENAME} @ONLY)
       INSTALL(PROGRAMS ${WT_BINARY_DIR}/examples/${EXAMPLESUBDIR}/${EXAMPLENAME} DESTINATION ${EXAMPLES_DESTINATION}/${EXAMPLESUBDIR})
-      IF(INSTALL_RESOURCES)
-	INSTALL( CODE "EXECUTE_PROCESS(COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_INSTALL_PREFIX}/share/Wt/resources ${CMAKE_INSTALL_PREFIX}/${EXAMPLES_DESTINATION}/${EXAMPLESUBDIR}/resources)" )
-      ENDIF(INSTALL_RESOURCES)
     ENDIF(WIN32)
   ENDIF(INSTALL_EXAMPLES)
 
@@ -235,6 +234,7 @@ SUBDIRS(
   qrlogin
   simplechat
   style
+  te-benchmark
   treelist
   treeview
   treeview-dragdrop

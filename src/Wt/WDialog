@@ -10,6 +10,7 @@
 #include <Wt/WPopupWidget>
 #include <Wt/WContainerWidget>
 #include <Wt/WJavaScript>
+#include <Wt/WStringStream>
 
 namespace Wt {
 
@@ -93,13 +94,13 @@ class DialogCover;
  *   dialog_ = new WDialog("Personalia");
  *  
  *   new Wt::WText("Enter your name: ", dialog_->contents());
- *   Wt::WLineEdit *edit = new Wt::WLineEdit(dialog_->contents());
+ *   edit_ = new Wt::WLineEdit(dialog_->contents());
  *   new Wt::WBreak(dialog_->contents());
  *  
  *   Wt::WPushButton *ok = new Wt::WPushButton("Ok", dialog_->contents());
  *
  *   // these events will accept() the Dialog
- *   edit->enterPressed().connect(dialog_, &Wt::WDialog::accept);
+ *   edit_->enterPressed().connect(dialog_, &Wt::WDialog::accept);
  *   ok->clicked().connect(dialog_, &Wt::WDialog::accept);
  *  
  *   dialog_->finished().connect(this, &MyClass::dialogDone);
@@ -351,6 +352,9 @@ public:
   bool closable() const { return closeIcon_ != 0; }
 
   /*! \brief Set focus on the first widget in the dialog.
+   *
+   * Autofocus is enabled by default. If a widget inside of
+   * this dialog already has focus, the focus will not be changed.
    */
   void setAutoFocus(bool enable){ autoFocus_ = enable;}
 
@@ -445,6 +449,7 @@ public:
 
 protected:
   virtual void render(WFlags<RenderFlag> flags);
+  virtual void onPathChange();
 
 private:
   WTemplate *impl_;
@@ -456,6 +461,7 @@ private:
   mutable WContainerWidget *footer_;
   bool modal_, resizable_, movable_, escapeIsReject_, autoFocus_;
   JSignal<int,int> moved_, resized_;
+  std::vector<std::string> delayedJs_;
 
   Signal<DialogCode> finished_;
   DialogCode result_;
@@ -468,6 +474,8 @@ private:
   void onEscapePressed();
   void onDefaultPressed();
   void bringToFront(const WMouseEvent &e);
+
+  void doJSAfterLoad(std::string js);
 
   DialogCover *cover();
 

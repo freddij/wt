@@ -45,7 +45,9 @@
 #if defined(wthttp_EXPORTS) || defined(wttest_EXPORTS)
   #define WTCONNECTOR_API WT_EXPORT
 #else
-  #ifdef WTHTTP_STATIC
+  #if defined(WTHTTP_STATIC) || defined(WTISAPI_STATIC)
+    // WTISAPI_STATIC is defined when building WTISAPI,
+    // when using ISAPI, the user should also define WTISAPI_STATIC
     #define WTCONNECTOR_API 
   #else
     #define WTCONNECTOR_API WT_IMPORT
@@ -77,7 +79,7 @@ typedef unsigned __int32 uint32_t;  /* 32 bit unsigned */
 
 #ifndef WT_CXX11
 
-#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L
+#if (defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || _MSC_VER >= 1900) && !defined(WT_TARGET_JAVA)
 #define WT_CXX11
 #endif
 

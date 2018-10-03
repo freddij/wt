@@ -1,14 +1,4 @@
-#include "Wt/WApplication"
-#include "Wt/WServerGLWidget"
-
-#include "Wt/WClientGLWidget"
-#include "Wt/WMemoryResource"
-#include "Wt/WPainter"
-#include "Wt/WRasterImage"
-#include "Wt/WWebWidget"
-#include "Wt/Http/Response"
-
-#include <fstream>
+#include "Wt/WDllDefs.h"
 
 #ifdef WT_WIN32
 #define WIN32_GL
@@ -23,6 +13,23 @@
 #include <GL/glew.h>
 #include <GL/gl.h>
 
+#ifdef WIN32_GL
+#include <GL/wglew.h>
+#include <windows.h>
+#endif
+
+#include "Wt/WApplication"
+#include "Wt/WServerGLWidget"
+
+#include "Wt/WClientGLWidget"
+#include "Wt/WMemoryResource"
+#include "Wt/WPainter"
+#include "Wt/WRasterImage"
+#include "Wt/WWebWidget"
+#include "Wt/Http/Response"
+
+#include <fstream>
+
 #ifdef X11_GL
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -32,11 +39,6 @@
 #define GLX_CONTEXT_MINOR_VERSION_ARB       0x2092
 
 typedef GLXContext (*glXCreateContextAttribsARBProc)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
-#endif
-
-#ifdef WIN32_GL
-#include <GL/wglew.h>
-#include <Windows.h>
 #endif
 
 #ifdef APPLE_GL
@@ -1061,7 +1063,7 @@ WGLWidget::AttribLocation WServerGLWidget::getAttribLocation(WGLWidget::Program 
   return WGLWidget::AttribLocation((int)id);
 }
 
-WGLWidget::UniformLocation WServerGLWidget::getUniformLocation(WGLWidget::Program program, const std::string location)
+WGLWidget::UniformLocation WServerGLWidget::getUniformLocation(WGLWidget::Program program, const std::string &location)
 {
   GLint id = glGetUniformLocation(program.getId(), location.c_str());
   SERVERGLDEBUG;
@@ -1729,7 +1731,7 @@ void WServerGLWidget::render(const std::string& jsRef,
     glInterface_->initializeGL();
     ss << js_.str().c_str();
     ss << "obj.paintGL = function(){\n"
-       << "Wt.emit(" << jsRef << ", " << WWebWidget::jsStringLiteral(std::string("repaintSignal")) << ");"
+       << Wt::WApplication::instance()->javaScriptClass() << ".emit(" << jsRef << ", " << WWebWidget::jsStringLiteral(std::string("repaintSignal")) << ");"
        << "}";
     ss << "}";
 

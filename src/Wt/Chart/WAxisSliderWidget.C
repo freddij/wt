@@ -222,15 +222,14 @@ WTransform WAxisSliderWidget::hv(const WTransform& t) const
 
 void WAxisSliderWidget::paintEvent(WPaintDevice *paintDevice)
 {
-  // Don't paint anything, unless we're associated to a chart,
-  // and the chart has been painted.
-  if (chart() && !chart()->cObjCreated_) {
-    return;
-  }
   if (!chart()) {
     LOG_ERROR("Attempted to draw a slider widget not associated with a chart.");
     return;
   }
+  // Don't paint anything, unless we're associated to a chart,
+  // and the chart has been painted.
+  if (!chart()->cObjCreated_ || chart()->needRerender())
+    return;
 
   if (series_->type() != LineSeries &&
       series_->type() != CurveSeries) {
@@ -322,9 +321,11 @@ void WAxisSliderWidget::paintEvent(WPaintDevice *paintDevice)
   WRectF selectionRect;
   {
     // Determine initial position based on xTransform of chart
-    double u = -chart()->xTransformHandle_.value().dx() / (chartArea.width() * chart()->xTransformHandle_.value().m11());
+    double u = -chart()->xAxis_.transformHandle.value().dx() /
+        (chartArea.width() * chart()->xAxis_.transformHandle.value().m11());
     selectionRect = WRectF(0, top, maxW, h - (top + bottom));
-    transform_.setValue(WTransform(1 / chart()->xTransformHandle_.value().m11(), 0, 0, 1, u * maxW, 0));
+    transform_.setValue(
+          WTransform(1 / chart()->xAxis_.transformHandle.value().m11(), 0, 0, 1, u * maxW, 0));
   }
   WRectF seriesArea(left, top + 5, maxW, h - (top + bottom + 5));
   WTransform selectionTransform = hv(WTransform(1,0,0,1,left,0) * transform_.value());
@@ -464,8 +465,15 @@ void WAxisSliderWidget::paintEvent(WPaintDevice *paintDevice)
 
     painter.setClipping(false);
   } else {
+    WPainterPath clipPath;
+    clipPath.addRect(hv(WRectF(left, top, maxW, h - top - bottom)));
+    painter.setClipPath(clipPath);
+    painter.setClipping(true);
+
     painter.setPen(seriesPen());
     painter.drawPath(curve);
+
+    painter.setClipping(false);
   }
 
   if (getMethod() == HtmlCanvas) {

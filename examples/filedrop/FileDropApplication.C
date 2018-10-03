@@ -20,7 +20,6 @@ using namespace Wt;
 static const std::string UPLOAD_FOLDER = "./uploaded/";
 static const int MAX_FILES = 36;
 
-
 FileDropApplication::FileDropApplication(const WEnvironment& env)
   : WApplication(env),
     nbUploads_(0)
@@ -32,6 +31,9 @@ FileDropApplication::FileDropApplication(const WEnvironment& env)
 
   drop_ = new WFileDropWidget(root());
 
+  drop_->setDropIndicationEnabled(true);
+  // drop_->setGlobalDropEnabled(true);
+  
   drop_->drop().connect(this, &FileDropApplication::handleDrop);
   drop_->newUpload().connect(this,&FileDropApplication::updateProgressListener);
   drop_->uploaded().connect(this, &FileDropApplication::saveFile);
@@ -49,17 +51,17 @@ FileDropApplication::FileDropApplication(const WEnvironment& env)
 void FileDropApplication::handleDrop(std::vector<WFileDropWidget::File *> files)
 {
   for (unsigned i=0; i < files.size(); i++) {
+    WFileDropWidget::File *file = files[i];
     if (nbUploads_ >= MAX_FILES) {
-      drop_->cancelUpload(files[i]);
+      drop_->cancelUpload(file);
       continue;
     }
 
     WContainerWidget *block = new WContainerWidget(drop_);
-    block->setToolTip(files[i]->clientFileName() + " [" + files[i]->mimeType()
-		      + "]");
+    block->setToolTip(file->clientFileName() + " [" + file->mimeType() + "]");
     block->addStyleClass("upload-block");
 
-    icons_[files[i]] = block;
+    icons_[file] = block;
     nbUploads_++;
   }
   
@@ -95,18 +97,19 @@ void FileDropApplication::failed(WFileDropWidget::File *file)
 
 void FileDropApplication::saveFile(WFileDropWidget::File *file)
 {
-  // std::string spool = file->uploadedFile().spoolFileName();
-  // std::ifstream src(spool.c_str(), std::ios::binary);
+  std::string spool = file->uploadedFile().spoolFileName();
+  std::ifstream src(spool.c_str(), std::ios::binary);
 
-  // std::ofstream dest((UPLOAD_FOLDER + file->clientFileName()).c_str(),
-  // 		       std::ios::binary);
-  // if (dest.fail()) {
-  //   std::cerr << "**** ERROR: The output file could not be opened"
-  // 	      << std::endl;
-  //   return;;
-  // }
+  std::string saveName = UPLOAD_FOLDER + file->clientFileName();
   
-  // dest << src.rdbuf();
+  std::ofstream dest(saveName.c_str(), std::ios::binary);
+  if (dest.fail()) {
+    std::cerr << "**** ERROR: The output file could not be opened"
+  	      << std::endl;
+    return;
+  }
+  
+  dest << src.rdbuf();
 
   if (icons_.find(file) != icons_.end()) {
     icons_[file]->addStyleClass("ready");

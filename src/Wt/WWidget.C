@@ -370,6 +370,7 @@ DomElement *WWidget::createSDomElement(WApplication *app)
     DomElement *result = webWidget()->createStubElement(app);
     renderOk();
     scheduleRerender(true);
+    WApplication::instance()->session()->renderer().markAsStubbed(this);
     return result;
   } else {
     webWidget()->setRendered(true);
@@ -548,12 +549,12 @@ WCssTextRule *WWidget::addCssRule(const std::string& selector,
 void WWidget::setObjectName(const std::string& name)
 {
   WApplication *app = WApplication::instance();
-  WObject::setObjectName(name);
   for (std::size_t i = 0; i < jsignals_.size(); ++i) {
     EventSignalBase *signal = jsignals_[i];
     if(signal->isExposedSignal())
       app->removeExposedSignal(signal);
   }
+  WObject::setObjectName(name);
   for (std::size_t i = 0; i < jsignals_.size(); ++i) {
     EventSignalBase *signal = jsignals_[i];
     if(signal->isExposedSignal())

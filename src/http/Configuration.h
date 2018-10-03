@@ -44,6 +44,7 @@ public:
 
   int threads() const { return threads_; }
   const std::string& docRoot() const { return docRoot_; }
+  const std::string& resourcesDir() const { return resourcesDir_; }
   const std::string& appRoot() const { return appRoot_; }
   bool defaultStatic() const { return defaultStatic_; }
   const std::vector<std::string>& staticPaths() const
@@ -71,6 +72,7 @@ public:
   int sslVerifyDepth() const { return sslVerifyDepth_; }
   const std::string& sslCaCertificates() const { return sslCaCertificates_; }
   const std::string& sslCipherList() const { return sslCipherList_; }
+  bool sslPreferServerCiphers() const { return sslPreferServerCiphers_; }
 
   const std::string& sessionIdPrefix() const { return sessionIdPrefix_; }
   const std::string& accessLog() const { return accessLog_; }
@@ -96,7 +98,7 @@ private:
   bool silent_;
 
   int threads_;
-  std::string docRoot_, appRoot_;
+  std::string docRoot_, appRoot_, resourcesDir_;
   bool defaultStatic_;
   std::vector<std::string> staticPaths_;
   std::string errRoot_;
@@ -120,6 +122,7 @@ private:
   int sslVerifyDepth_;
   std::string sslCaCertificates_;
   std::string sslCipherList_;
+  bool sslPreferServerCiphers_;
 
   std::string sessionIdPrefix_;
   std::string accessLog_;

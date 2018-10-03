@@ -47,7 +47,10 @@ IF(ENABLE_SQLITE)
 
   MESSAGE("** Wt::Dbo: building SQLite3 backend.")
 
-  TARGET_LINK_LIBRARIES(wtdbosqlite3 wtdbo
+  TARGET_LINK_LIBRARIES(wtdbosqlite3
+    PUBLIC
+      wtdbo
+    PRIVATE
       ${SQLITE3_LIBRARIES}
       ${BOOST_DT_LIB}
       ${WT_THREAD_LIB}
@@ -60,7 +63,7 @@ IF(ENABLE_SQLITE)
       dl
       )
     IF(DL_LIB)
-      TARGET_LINK_LIBRARIES(wtdbosqlite3 ${DL_LIB})
+      TARGET_LINK_LIBRARIES(wtdbosqlite3 PRIVATE ${DL_LIB})
     ENDIF(DL_LIB)
   ENDIF(NOT WIN32)
 
@@ -83,7 +86,7 @@ IF(ENABLE_SQLITE)
     PROPERTIES
       COMPILE_FLAGS "${BUILD_PARALLEL} /wd4251 /wd4275 /wd4267"
     )
-
+	SET_TARGET_PROPERTIES(wtdbosqlite3 PROPERTIES FOLDER "dbo")
   ENDIF(MSVC)
 
   INSTALL_FILES(/include/Wt/Dbo/backend "^Sqlite3$")
@@ -112,9 +115,19 @@ IF(ENABLE_POSTGRES AND POSTGRES_FOUND)
     Postgres.C
     ${postgres_SRCS}
     )
-  TARGET_LINK_LIBRARIES(wtdbopostgres wtdbo ${POSTGRES_LIBRARIES} ${BOOST_DT_LIB})
+  TARGET_LINK_LIBRARIES(wtdbopostgres
+    PUBLIC
+      wtdbo
+    PRIVATE
+      ${POSTGRES_LIBRARIES}
+      ${BOOST_DT_LIB}
+  )
 
   INCLUDE_DIRECTORIES(${POSTGRES_INCLUDE})
+
+  IF(MSVC)
+    SET_TARGET_PROPERTIES(wtdbopostgres PROPERTIES FOLDER "dbo")
+  ENDIF(MSVC)
 
   INSTALL(TARGETS wtdbopostgres
     RUNTIME DESTINATION bin
@@ -184,9 +197,11 @@ IF(ENABLE_FIREBIRD AND FIREBIRD_FOUND)
     ${firebird_SRCS}
   )
   TARGET_LINK_LIBRARIES(wtdbofirebird
-    wtdbo
-    ${FIREBIRD_LIBRARIES}
-    ${BOOST_DT_LIB}
+    PUBLIC
+      wtdbo
+    PRIVATE
+      ${FIREBIRD_LIBRARIES}
+      ${BOOST_DT_LIB}
   )
 
   IF(MSVC)
@@ -195,6 +210,7 @@ IF(ENABLE_FIREBIRD AND FIREBIRD_FOUND)
     PROPERTIES
       COMPILE_FLAGS "${BUILD_PARALLEL} /wd4251 /wd4275 /wd4267"
     )
+	SET_TARGET_PROPERTIES(wtdbofirebird PROPERTIES FOLDER "dbo")
   ENDIF(MSVC)
 
   INSTALL(TARGETS wtdbofirebird
@@ -243,7 +259,13 @@ IF(ENABLE_MYSQL AND MYSQL_FOUND)
     MySQL.C
     ${mysql_SRCS}
     )
-  TARGET_LINK_LIBRARIES(wtdbomysql wtdbo ${MYSQL_LIBRARIES} ${BOOST_DT_LIB})
+  TARGET_LINK_LIBRARIES(wtdbomysql
+    PUBLIC
+      wtdbo
+    PRIVATE
+      ${MYSQL_LIBRARIES}
+      ${BOOST_DT_LIB}
+  )
 
   INCLUDE_DIRECTORIES(${MYSQL_INCLUDE})
 
@@ -261,6 +283,9 @@ IF(ENABLE_MYSQL AND MYSQL_FOUND)
   )
   INSTALL_FILES(/include/Wt/Dbo/backend "^MySQL$")
   INSTALL_FILES(/include/Wt/Dbo/backend "^.*MySQL.*h$")
+  IF(MSVC)
+    SET_TARGET_PROPERTIES(wtdbomysql PROPERTIES FOLDER "dbo")
+  ENDIF(MSVC)
 ELSE(ENABLE_MYSQL AND MYSQL_FOUND)
   MESSAGE("** Wt::Dbo: not building MySQL backend.")
 
@@ -273,3 +298,59 @@ ELSE(ENABLE_MYSQL AND MYSQL_FOUND)
   SET(HAVE_MYSQL OFF CACHE INTERNAL "building mysql backend" FORCE)
 ENDIF(ENABLE_MYSQL AND MYSQL_FOUND)
 
+IF(ENABLE_MSSQLSERVER AND ODBC_FOUND AND (WIN32 OR HAS_CXX11))
+
+  SET(HAVE_MSSQLSERVER ON CACHE INTERNAL "building Microsoft SQL Server backend" FORCE)
+
+  MESSAGE("** Wt::Dbo: building Microsoft SQL Server backend.")
+
+  IF(WIN32)
+    IF(SHARED_LIBS)
+      CONFIGURE_FILE(wtdbomssqlserver-version.rc.in
+                     ${CMAKE_CURRENT_BINARY_DIR}/wtdbomssqlserver-version.rc)
+      SET(mssqlserver_SRCS ${mssqlserver_SRCS}
+          ${CMAKE_CURRENT_BINARY_DIR}/wtdbomssqlserver-version.rc)
+    ENDIF(SHARED_LIBS)
+  ENDIF(WIN32)
+
+  ADD_LIBRARY(wtdbomssqlserver
+    MSSQLServer.C
+    ${mssqlserver_SRCS}
+  )
+  TARGET_LINK_LIBRARIES(wtdbomssqlserver
+    PUBLIC
+      wtdbo
+    PRIVATE
+      ${ODBC_LIBRARIES}
+  )
+
+  INCLUDE_DIRECTORIES(${ODBC_INCLUDE})
+
+  INSTALL(TARGETS wtdbomssqlserver
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION ${LIB_INSTALL_DIR}
+    ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
+
+  SET_TARGET_PROPERTIES(
+    wtdbomssqlserver
+  PROPERTIES
+    VERSION ${VERSION_SERIES}.${VERSION_MAJOR}.${VERSION_MINOR}
+    SOVERSION ${WTDBOMSSQLSERVER_SOVERSION}
+    DEBUG_POSTFIX ${DEBUG_LIB_POSTFIX}
+    )
+
+  IF(MSVC)
+    SET_TARGET_PROPERTIES(
+      wtdbomssqlserver
+    PROPERTIES
+      COMPILE_FLAGS "${BUILD_PARALLEL} /wd4251 /wd4275 /wd4267"
+    )
+    SET_TARGET_PROPERTIES(wtdbomssqlserver PROPERTIES FOLDER "dbo")
+  endif(MSVC)
+
+  INSTALL_FILES(/include/Wt/Dbo/backend "^MSSQLServer$")
+  INSTALL_FILES(/include/Wt/Dbo/backend "^.*MSSQLServer.*h$")
+ELSE(ENABLE_MSSQLSERVER AND ODBC_FOUND AND (WIN32 OR HAS_CXX11))
+  MESSAGE("** Wt::Dbo: not building Microsoft SQL Server backend.")
+  SET(HAVE_MSSQLSERVER OFF CACHE INTERNAL "building Microsoft SQL Server backend" FORCE)
+ENDIF(ENABLE_MSSQLSERVER AND ODBC_FOUND AND (WIN32 OR HAS_CXX11))

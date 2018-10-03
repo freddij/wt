@@ -43,6 +43,12 @@ void SqlConnection::executeSql(const std::string& sql)
   delete s;
 }
 
+void SqlConnection::executeSqlStateful(const std::string& sql)
+{
+  statefulSql_.push_back(sql);
+  executeSql(sql);
+}
+
 SqlStatement *SqlConnection::getStatement(const std::string& id) const
 {
   StatementMap::const_iterator i = statementCache_.find(id);
@@ -142,8 +148,24 @@ bool SqlConnection::requireSubqueryAlias() const
   return false;
 }
 
+std::string SqlConnection::autoincrementInsertInfix(const std::string &) const
+{
+  return "";
+}
+
 void SqlConnection::prepareForDropTables()
 { }
 
+std::vector<SqlStatement *> SqlConnection::getStatements() const
+{
+  std::vector<SqlStatement *> result;
+
+  for (StatementMap::const_iterator i = statementCache_.begin();
+       i != statementCache_.end(); ++i)
+    result.push_back(i->second);
+
+  return result;
+}
+  
   }
 }

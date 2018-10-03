@@ -73,7 +73,7 @@ WString WChart3DImplementation::categoryLabel(int u, Axis axis) const
   return first->axisLabel(u, axis);
 }
 
-WAbstractChartImplementation::RenderRange WChart3DImplementation::computeRenderRange(Axis axis, AxisScale scale) const
+WAbstractChartImplementation::RenderRange WChart3DImplementation::computeRenderRange(Axis axis, int yAxis, AxisScale scale) const
 {
   WAbstractChartImplementation::RenderRange range;
   
@@ -145,6 +145,11 @@ void WChart3DImplementation::update()
 {
   chart_->updateChart(GLContext |
 		      GLTextures);
+}
+
+bool WChart3DImplementation::onDemandLoadingEnabled() const
+{
+  return false;
 }
 
 

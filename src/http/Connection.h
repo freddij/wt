@@ -27,6 +27,11 @@ typedef boost::asio::steady_timer asio_timer;
 #else
 typedef boost::asio::deadline_timer asio_timer;
 #endif
+#if BOOST_VERSION >= 106600
+typedef boost::asio::io_context::strand asio_strand;
+#else
+typedef boost::asio::strand asio_strand;
+#endif
 
 #include <boost/array.hpp>
 #include <boost/noncopyable.hpp>
@@ -72,7 +77,7 @@ public:
   virtual ~Connection();
 
   Server *server() const { return server_; }
-  asio::strand& strand() { return strand_; }
+  asio_strand& strand() { return strand_; }
 
   /// Stop all asynchronous operations associated with the connection.
   void scheduleStop();
@@ -93,8 +98,17 @@ public:
   //       further calls to detectDisconnect are ignored
   void detectDisconnect(ReplyPtr reply,
 			const boost::function<void()>& callback);
+  void asyncDetectDisconnect(ReplyPtr reply,
+			     const boost::function<void()>& callback);
 
 protected:
+  /// Get the native handle of the socket
+#if BOOST_VERSION >= 106600
+  boost::asio::ip::tcp::socket::native_handle_type native();
+#else
+  boost::asio::ip::tcp::socket::native_type native();
+#endif
+
   void handleWriteResponse(ReplyPtr reply,
 			   const asio_error_code& e,
 			   std::size_t bytes_transferred);
@@ -113,7 +127,7 @@ protected:
   /// The manager for this connection.
   ConnectionManager& ConnectionManager_;
 
-  asio::strand strand_;
+  asio_strand strand_;
 
   void finishReply();
 
