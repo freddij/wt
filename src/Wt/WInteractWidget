@@ -118,6 +118,7 @@ public:
    * \sa keyPressed(), Key_Escape
    */
   EventSignal<>& escapePressed();
+#ifdef EVENT_TONY
   /* ksystem start 1 */
   EventSignal<>& spacebarPressed();
   EventSignal<>& tabPressed();
@@ -159,6 +160,15 @@ public:
   EventSignal<>& equalPressed();
   EventSignal<>& percentPressed();
   /* ksystem end 1 */
+#endif
+
+#ifndef EVENT_TONY
+  JSignal<>& signalKeyDown(const std::string& key
+                           , const KeyboardModifier modifier=NoModifier
+                           , bool preventDefault=false);
+  JSignal<>& signalBeforeInput(const char data
+                               , bool preventDefault=false);
+#endif
 
   /*! \brief Event signal emitted when a mouse key was clicked on this
    *         widget.
@@ -395,6 +405,10 @@ protected:
 
   void updateEventSignals(DomElement& element, bool all);
 
+#ifndef EVENT_TONY
+  std::map<std::string, JSlot*> mapJSlot;
+#endif
+
   JSlot *dragSlot_;
   JSlot *dragTouchSlot_;
   JSlot *dragTouchEndSlot_;
@@ -426,6 +440,7 @@ private:
   static const char *GESTURE_CHANGE_SIGNAL;
   static const char *GESTURE_END_SIGNAL;
 
+#ifdef EVENT_TONY
   /*ksystem start 2*/
   static const char *SPACEBAR_PRESS_SIGNAL;
   static const char *TAB_PRESS_SIGNAL;
@@ -467,6 +482,7 @@ private:
   static const char *EQUAL_PRESS_SIGNAL;
   static const char *PERCENT_PRESS_SIGNAL;
   /*ksystem end 2*/
+#endif
 
 
   friend class DomElement;
