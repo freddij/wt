@@ -164,9 +164,9 @@ public:
 
 #ifndef EVENT_TONY
   JSignal<>& signalKeyDown(const std::string& key
-                           , const KeyboardModifier modifier=NoModifier
+                           , const WFlags<KeyboardModifier> modifiers=NoModifier
                            , bool preventDefault=false);
-  JSignal<>& signalBeforeInput(const char data
+  JSignal<>& signalBeforeInput(const std::string& data
                                , bool preventDefault=false);
   void addKEventSignal(JSignal<> &s);
   JSignal<> *getKEventSignal(const char *name);
@@ -408,7 +408,6 @@ protected:
   void updateEventSignals(DomElement& element, bool all);
 
 #ifndef EVENT_TONY
-  //std::map<std::string, JSlot*> mapJSlot;
   typedef std::list<JSignal<> *> KEventSignalList;
   KEventSignalList kEventSignals_;
 #endif

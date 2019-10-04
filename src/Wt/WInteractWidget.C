@@ -102,6 +102,13 @@ WInteractWidget::~WInteractWidget()
   delete dragSlot_;
   delete dragTouchSlot_;
   delete dragTouchEndSlot_;
+
+  while (!kEventSignals_.empty()) {
+    JSignal<> *s = kEventSignals_.front();
+    kEventSignals_.pop_front();
+    delete s;
+  }
+
 }
 
 void WInteractWidget::setPopup(bool popup)
@@ -147,41 +154,36 @@ EventSignal<>& WInteractWidget::escapePressed()
 }
 
 #ifndef EVENT_TONY
-JSignal<> &Wt::WInteractWidget::signalKeyDown(const std::string &key, const KeyboardModifier modifier, bool preventDefault)
+JSignal<> &Wt::WInteractWidget::signalKeyDown(const std::string &key, const WFlags<Wt::KeyboardModifier> modifiers, bool preventDefault)
 {
-  std::string name("kd"); name.append(key).append(std::to_string(modifier));
+  std::string name("kd"); name.append(key).append(std::to_string(modifiers));
   JSignal<> *ret = dynamic_cast<JSignal<> *>(getKEventSignal(name.data()));
   if (!ret)
   {
     ret = new JSignal<>(this, name);
     addKEventSignal(*ret);
 
-    std::string modString = "true";
-    switch (modifier)
-    {
-    case ShiftModifier:
-      modString = "e.shiftKey";
-      break;
-    case ControlModifier:
-      modString = "e.ctrlKey";
-      break;
-    case AltModifier:
-      modString = "e.altKey";
-      break;
-    case MetaModifier:
-      modString = "e.metaKey";
-      break;
-    default:
-      modString = "true";
-    }
+    std::string modString;
+    if (modifiers.testFlag(ShiftModifier))
+      modString.append("&& e.shiftKey");
+    else
+      modString.append("&& !e.shiftKey");
+    if (modifiers.testFlag(ControlModifier))
+      modString.append("&& e.ctrlKey");
+    else
+      modString.append("&& !e.ctrlKey");
+    if (modifiers.testFlag(AltModifier))
+      modString.append("&& e.altlKey");
+    else
+      modString.append("&& !e.altlKey");
+    if (modifiers.testFlag(MetaModifier))
+      modString.append("&& e.metaKey");
+    else
+      modString.append("&& !e.metaKey");
 
-    /*new JSlot(WString(WT_JS(function(s,e,k,m,p){
-                            if (e.)
-                            }))
-              , 3, this);*/
     doJavaScript(WString(WT_JS({1}
                        .addEventListener('keydown',function(e){
-                                           if (e.key=='{2}' && {3}) {
+                                           if (e.key=='{2}' {3}) {
                                              if ({4}) e.preventDefault();
                                              {5}
                                            };
@@ -195,9 +197,9 @@ JSignal<> &Wt::WInteractWidget::signalKeyDown(const std::string &key, const Keyb
   return *ret;
 }
 
-JSignal<> &Wt::WInteractWidget::signalBeforeInput(const char data, bool preventDefault)
+JSignal<> &Wt::WInteractWidget::signalBeforeInput(const std::string &data, bool preventDefault)
 {
-  std::string name("bi"); name.append(0,data);
+  std::string name("bi"); name.append(data);
   JSignal<> *ret = dynamic_cast<JSignal<> *>(getKEventSignal(name.data()));
   if (!ret)
   {
