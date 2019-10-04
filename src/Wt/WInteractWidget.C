@@ -150,12 +150,11 @@ EventSignal<>& WInteractWidget::escapePressed()
 JSignal<> &Wt::WInteractWidget::signalKeyDown(const std::string &key, const KeyboardModifier modifier, bool preventDefault)
 {
   std::string name("kd"); name.append(key).append(std::to_string(modifier));
-  JSignal<> *ret = dynamic_cast<JSignal<> *>(getEventSignal(name.data()));
+  JSignal<> *ret = dynamic_cast<JSignal<> *>(getKEventSignal(name.data()));
   if (!ret)
   {
     ret = new JSignal<>(this, name);
-    addEventSignal(*ret);
-    addJSignal(ret);
+    addKEventSignal(*ret);
 
     std::string modString = "true";
     switch (modifier)
@@ -199,15 +198,14 @@ JSignal<> &Wt::WInteractWidget::signalKeyDown(const std::string &key, const Keyb
 JSignal<> &Wt::WInteractWidget::signalBeforeInput(const char data, bool preventDefault)
 {
   std::string name("bi"); name.append(0,data);
-  JSignal<> *ret = dynamic_cast<JSignal<> *>(getEventSignal(name.data()));
+  JSignal<> *ret = dynamic_cast<JSignal<> *>(getKEventSignal(name.data()));
   if (!ret)
   {
     ret = new JSignal<>(this, name);
-    addEventSignal(*ret);
-    addJSignal(ret);
+    addKEventSignal(*ret);
 
     doJavaScript(WString(WT_JS({1}
-                       .addEventListener('keydown',function(e){
+                       .addEventListener('beforeinput',function(e){
                                            if (e.data=='{2}') {
                                              if ({3}) e.preventDefault();
                                              {4}
@@ -220,6 +218,23 @@ JSignal<> &Wt::WInteractWidget::signalBeforeInput(const char data, bool preventD
         );
   }
   return *ret;
+}
+
+void Wt::WInteractWidget::addKEventSignal(JSignal<> &s)
+{
+  kEventSignals_.push_back(&s);
+}
+
+JSignal<> *Wt::WInteractWidget::getKEventSignal(const char *name)
+{
+  for (KEventSignalList::iterator i = kEventSignals_.begin();
+       i != kEventSignals_.end(); ++i) {
+    JSignal<>& s = **i;
+    if (s.name() == name)
+      return &s;
+  }
+
+  return 0;
 }
 #endif
 

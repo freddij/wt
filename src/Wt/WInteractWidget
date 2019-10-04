@@ -168,6 +168,8 @@ public:
                            , bool preventDefault=false);
   JSignal<>& signalBeforeInput(const char data
                                , bool preventDefault=false);
+  void addKEventSignal(JSignal<> &s);
+  JSignal<> *getKEventSignal(const char *name);
 #endif
 
   /*! \brief Event signal emitted when a mouse key was clicked on this
@@ -406,7 +408,9 @@ protected:
   void updateEventSignals(DomElement& element, bool all);
 
 #ifndef EVENT_TONY
-  std::map<std::string, JSlot*> mapJSlot;
+  //std::map<std::string, JSlot*> mapJSlot;
+  typedef std::list<JSignal<> *> KEventSignalList;
+  KEventSignalList kEventSignals_;
 #endif
 
   JSlot *dragSlot_;
