@@ -576,6 +576,15 @@ void WLineEdit::defineJavaScript()
   connectJavaScript(focussed(), "focussed");
   connectJavaScript(blurred(), "blurred");
   connectJavaScript(clicked(), "clicked");
+
+//#define INPUTMASK_MOBILE
+#ifdef INPUTMASK_MOBILE
+  if (app->environment().agentIsMobileWebKit())
+    doJavaScript(tr("Wt.WLineEdit.beforeinput.JS")
+                 .arg(jsRef())
+                 .toUTF8());
+#endif
+
 }
 
 void WLineEdit::connectJavaScript(Wt::EventSignalBase& s,
