@@ -163,9 +163,11 @@ public:
 #endif
 
 #ifndef EVENT_TONY
-  JSignal<>& signalKeyDown(const std::string& key
+  enum KEY_TRIGGER {KEYDOWN,KEYUP};
+  JSignal<>& signalKeyDownUp(const std::string& key
                            , const WFlags<KeyboardModifier> modifiers=NoModifier
-                           , bool preventDefault=false);
+                           , bool preventDefault=false
+                           , KEY_TRIGGER=KEYDOWN);
   JSignal<>& signalBeforeInput(const std::string& data
                                , bool preventDefault=false);
   void addKEventSignal(JSignal<> &s);

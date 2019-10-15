@@ -323,6 +323,7 @@ WT_USTRING WLineEdit::inputMask() const
 void WLineEdit::setInputMask(const WT_USTRING &mask,
 			     WFlags<InputMaskFlag> flags)
 {
+  if (mask.empty() && inputMask_.empty()) return;
   inputMaskFlags_ = flags;
 
   if (inputMask_ != mask) {

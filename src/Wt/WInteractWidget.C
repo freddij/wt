@@ -154,7 +154,7 @@ EventSignal<>& WInteractWidget::escapePressed()
 }
 
 #ifndef EVENT_TONY
-JSignal<> &Wt::WInteractWidget::signalKeyDown(const std::string &key, const WFlags<Wt::KeyboardModifier> modifiers, bool preventDefault)
+JSignal<> &WInteractWidget::signalKeyDownUp(const std::string &key, const WFlags<Wt::KeyboardModifier> modifiers, bool preventDefault, KEY_TRIGGER trigger)
 {
   std::string name("kd"); name.append(key).append(std::to_string(modifiers));
   JSignal<> *ret = dynamic_cast<JSignal<> *>(getKEventSignal(name.data()));
@@ -181,53 +181,72 @@ JSignal<> &Wt::WInteractWidget::signalKeyDown(const std::string &key, const WFla
     else
       modString.append("&& !e.metaKey");
 
-    doJavaScript(WString(WT_JS({1}
-                       .addEventListener('keydown',function(e){
-                                           if (e.key=='{2}' {3}) {
-                                             if ({4}) e.preventDefault();
-                                             {5}
-                                           };
-                                         });))
-        .arg(jsRef())
-        .arg(key).arg(modString).arg(preventDefault ? "true" : "false")
-        .arg(ret->createCall())
-        .toUTF8()
-        );
+    JSlot *jslot = new JSlot(
+          WString(
+            WT_JS(
+              function(s,e){
+                if (e.key=='{1}' {2}) {
+                  if ({3}) e.preventDefault();
+                  {4}
+                };
+              }))
+          .arg(key)
+          .arg(modString)
+          .arg(preventDefault ? "true" : "false")
+          .arg(ret->createCall())
+          .toUTF8()
+          ,this);
+
+    EventSignal<WKeyEvent> &keysignal = (trigger == KEYDOWN) ? keyWentDown() : keyWentUp();
+    keysignal.connect(*jslot);
   }
   return *ret;
 }
 
-JSignal<> &Wt::WInteractWidget::signalBeforeInput(const std::string &data, bool preventDefault)
+JSignal<> &WInteractWidget::signalBeforeInput(const std::string &data, bool preventDefault)
 {
   std::string name("bi"); name.append(data);
   JSignal<> *ret = dynamic_cast<JSignal<> *>(getKEventSignal(name.data()));
   if (!ret)
   {
+    /*JSignal<> *beforeInput = dynamic_cast<JSignal<> *>(getKEventSignal("beforeinput"));
+    if (!beforeInput)
+    {
+      beforeInput = new JSignal<>(this, "beforeinput");
+      addKEventSignal(*beforeInput);
+      setAttributeValue("onbeforeinput", beforeInput->createCall());
+    }*/
+
     ret = new JSignal<>(this, name);
     addKEventSignal(*ret);
 
-    doJavaScript(WString(WT_JS({1}
-                       .addEventListener('beforeinput',function(e){
-                                           if (e.data=='{2}') {
-                                             if ({3}) e.preventDefault();
-                                             {4}
-                                           };
-                                         });))
-        .arg(jsRef())
-        .arg(data).arg(preventDefault ? "true" : "false")
-        .arg(ret->createCall())
-        .toUTF8()
-        );
+    JSlot *jslot = new JSlot(
+          WString(
+            WT_JS(
+              function(s,e){
+                if (e.key=='{1}') {
+                  if ({2}) e.preventDefault();
+                  {3}
+                };
+              }))
+          .arg(data)
+          .arg(preventDefault ? "true" : "false")
+          .arg(ret->createCall())
+          .toUTF8()
+          ,this);
+
+    keyWentUp().connect(*jslot);
   }
   return *ret;
 }
 
-void Wt::WInteractWidget::addKEventSignal(JSignal<> &s)
+void WInteractWidget::addKEventSignal(JSignal<> &s)
 {
   kEventSignals_.push_back(&s);
+  addJSignal(&s);
 }
 
-JSignal<> *Wt::WInteractWidget::getKEventSignal(const char *name)
+JSignal<> *WInteractWidget::getKEventSignal(const char *name)
 {
   for (KEventSignalList::iterator i = kEventSignals_.begin();
        i != kEventSignals_.end(); ++i) {
