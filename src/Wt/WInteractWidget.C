@@ -28,6 +28,7 @@ const char *WInteractWidget::KEYPRESS_SIGNAL = "keypress";
 const char *WInteractWidget::KEYUP_SIGNAL = "keyup";
 const char *WInteractWidget::ENTER_PRESS_SIGNAL = "M_enterpress";
 const char *WInteractWidget::ESCAPE_PRESS_SIGNAL = "M_escapepress";
+const char *WInteractWidget::BEFORE_INPUT_SIGNAL = "beforeinput";
 #ifdef EVENT_TONY
 /* ksystem start 1 */
 const char *WInteractWidget::SPACEBAR_PRESS_SIGNAL = "M_spacebarpress";
@@ -154,7 +155,7 @@ EventSignal<>& WInteractWidget::escapePressed()
 }
 
 #ifndef EVENT_TONY
-JSignal<> &WInteractWidget::signalKeyDownUp(const std::string &key, const WFlags<Wt::KeyboardModifier> modifiers, bool preventDefault, KEY_TRIGGER trigger)
+JSignal<> &WInteractWidget::keyDownUpSignal(const std::string &key, const WFlags<Wt::KeyboardModifier> modifiers, bool preventDefault, KEY_TRIGGER trigger)
 {
   std::string name("kd"); name.append(key).append(std::to_string(modifiers));
   JSignal<> *ret = dynamic_cast<JSignal<> *>(getKEventSignal(name.data()));
@@ -203,39 +204,61 @@ JSignal<> &WInteractWidget::signalKeyDownUp(const std::string &key, const WFlags
   return *ret;
 }
 
-JSignal<> &WInteractWidget::signalBeforeInput(const std::string &data, bool preventDefault)
+JSignal<> &WInteractWidget::beforeInputSignal(const std::string &data, bool preventDefault)
 {
+#ifdef SIG_BEFORE_INPUT
+  JSignal<> *beforeInput = dynamic_cast<JSignal<> *>(getKEventSignal(BEFORE_INPUT_SIGNAL));
+  if (!beforeInput)
+  {
+    beforeInput = new JSignal<>(this, BEFORE_INPUT_SIGNAL);
+    addKEventSignal(*beforeInput);
+    //setAttributeValue("onbeforeinput", beforeInput->createCall());
+  }
+#endif
+
   std::string name("bi"); name.append(data);
   JSignal<> *ret = dynamic_cast<JSignal<> *>(getKEventSignal(name.data()));
   if (!ret)
   {
-    /*JSignal<> *beforeInput = dynamic_cast<JSignal<> *>(getKEventSignal("beforeinput"));
-    if (!beforeInput)
-    {
-      beforeInput = new JSignal<>(this, "beforeinput");
-      addKEventSignal(*beforeInput);
-      setAttributeValue("onbeforeinput", beforeInput->createCall());
-    }*/
-
     ret = new JSignal<>(this, name);
     addKEventSignal(*ret);
 
+#ifdef SIG_BEFORE_INPUT
     JSlot *jslot = new JSlot(
+#else
+    doJavaScript(
+#endif
           WString(
+#ifdef SIG_BEFORE_INPUT
             WT_JS(
               function(s,e){
-                if (e.key=='{1}') {
-                  if ({2}) e.preventDefault();
-                  {3}
+                if (e.key=='{2}') {
+                  if ({3}) e.preventDefault();
+                  {4}
                 };
-              }))
+              })
+#else
+            WT_JS({1}.addEventListener(
+                    'beforeinput', function(e) {
+                      if (e.data=='{2}') {
+                        if ({3}) e.preventDefault();
+                        {4}
+                      };
+                    } )
+              )
+#endif
+            )
+          .arg(jsRef())
           .arg(data)
           .arg(preventDefault ? "true" : "false")
           .arg(ret->createCall())
           .toUTF8()
+#ifdef SIG_BEFORE_INPUT
           ,this);
-
-    keyWentUp().connect(*jslot);
+    beforeInput->connect(*jslot);
+#else
+          );
+#endif
   }
   return *ret;
 }
@@ -1120,7 +1143,19 @@ void WInteractWidget::updateDom(DomElement& element, bool all)
       element.setEvent("keydown", actions);
     else if (!all)
       element.setEvent("keydown", std::string(), std::string());
+  } //updateKeyDown
+
+#ifdef SIG_BEFORE_INPUT
+  /*
+   * -- Before input signal
+   */
+  JSignal<> *beforeInput = getKEventSignal(BEFORE_INPUT_SIGNAL);
+  bool updateBeforeInput = beforeInput && beforeInput->needsUpdate(all);
+  if (updateBeforeInput)
+  {
+    //element.setAttribute("onbeforeinput", beforeInput->createCall());
   }
+#endif
 
   /*
    * -- allow computation of dragged mouse distance

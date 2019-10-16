@@ -164,11 +164,11 @@ public:
 
 #ifndef EVENT_TONY
   enum KEY_TRIGGER {KEYDOWN,KEYUP};
-  JSignal<>& signalKeyDownUp(const std::string& key
+  JSignal<>& keyDownUpSignal(const std::string& key
                            , const WFlags<KeyboardModifier> modifiers=NoModifier
                            , bool preventDefault=false
                            , KEY_TRIGGER=KEYDOWN);
-  JSignal<>& signalBeforeInput(const std::string& data
+  JSignal<>& beforeInputSignal(const std::string& data
                                , bool preventDefault=false);
   void addKEventSignal(JSignal<> &s);
   JSignal<> *getKEventSignal(const char *name);
@@ -429,6 +429,7 @@ private:
   static const char *KEYUP_SIGNAL;
   static const char *ENTER_PRESS_SIGNAL;
   static const char *ESCAPE_PRESS_SIGNAL;
+  static const char *BEFORE_INPUT_SIGNAL;
   static const char *DBL_CLICK_SIGNAL;
   static const char *MOUSE_DOWN_SIGNAL;
   static const char *MOUSE_UP_SIGNAL;
