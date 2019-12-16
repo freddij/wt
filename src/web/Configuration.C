@@ -406,6 +406,12 @@ std::string Configuration::sessionIdPrefix() const
   return connectorSessionIdPrefix_;
 }
 
+int Configuration::fullSessionIdLength() const
+{
+  READ_LOCK;
+  return sessionIdLength_ + static_cast<int>(connectorSessionIdPrefix_.size());
+}
+
 bool Configuration::behindReverseProxy() const
 {
   READ_LOCK;
@@ -1166,7 +1172,7 @@ bool Configuration::registerSessionId(const std::string& oldId,
 std::string Configuration::generateSessionId()
 {
   std::string sessionId = sessionIdPrefix();
-  sessionId += WRandom::generateId(sessionIdLength() - sessionId.length());
+  sessionId += WRandom::generateId(sessionIdLength());
   return sessionId;
 }
 

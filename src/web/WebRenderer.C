@@ -110,9 +110,9 @@ WebRenderer::WebRenderer(WebSession& session)
     initialStyleRendered_(false),
     twoPhaseThreshold_(5000),
     pageId_(0),
+    ackErrs_(0),
     expectedAckId_(0),
     scriptId_(0),
-    ackErrs_(0),
     linkedCssCount_(-1),
     currentStatelessSlotIsActuallyStateless_(true),
     formObjectsChanged_(true),
@@ -193,6 +193,8 @@ std::string WebRenderer::bodyClassRtl() const
 
 void WebRenderer::saveChanges()
 {
+  collectedJS1_ << invisibleJS_.str();
+  invisibleJS_.clear();
   collectJS(&collectedJS1_);
 }
 
@@ -201,7 +203,7 @@ void WebRenderer::discardChanges()
   collectJS(0);
 }
 
-WebRenderer::AckState WebRenderer::ackUpdate(int updateId)
+WebRenderer::AckState WebRenderer::ackUpdate(unsigned int updateId)
 {
   /*
    * If we are using an unreliable transport, then we remember
@@ -223,8 +225,7 @@ WebRenderer::AckState WebRenderer::ackUpdate(int updateId)
     setJSSynced(false);
     ackErrs_ = 0;
     return CorrectAck;
-  } else if ((updateId < expectedAckId_ && expectedAckId_ - updateId < 5)
-	     || (expectedAckId_ - 5 < updateId)) {
+  } else if (expectedAckId_ - updateId < 5) {
     ++ackErrs_;
     return ackErrs_ < 3 ? ReasonableAck : BadAck; // That's still acceptible but no longer plausible
   } else
@@ -338,48 +339,51 @@ void WebRenderer::streamBootContent(WebResponse& response,
 
   WStringStream out(response.out());
 
-  FileServe bootJs(skeletons::Boot_js1);
-
   boot.setVar("BLANK_HTML",
-	      session_.bootstrapUrl(response, WebSession::ClearInternalPath)
-	      + "&amp;request=resource&amp;resource=blank");
+              session_.bootstrapUrl(response, WebSession::ClearInternalPath)
+              + "&amp;request=resource&amp;resource=blank");
   boot.setVar("SESSION_ID", session_.sessionId());
   //TODO remove APP_CLASS, will later only be used in the javascript
   boot.setVar("APP_CLASS", "Wt");
 
-  bootJs.setVar("SELF_URL",
-		safeJsStringLiteral
-		(session_.bootstrapUrl(response, 
-				       WebSession::ClearInternalPath)));
-  bootJs.setVar("SESSION_ID", session_.sessionId());
-
-  expectedAckId_ = scriptId_ = WRandom::get();
-  ackErrs_ = 0;
-
-  bootJs.setVar("SCRIPT_ID", scriptId_);
-  bootJs.setVar("RANDOMSEED", WRandom::get());
-  bootJs.setVar("RELOAD_IS_NEWSESSION", conf.reloadIsNewSession());
-  bootJs.setVar("USE_COOKIES",
-		conf.sessionTracking() == Configuration::CookiesURL);
-  bootJs.setVar("AJAX_CANONICAL_URL",
-		safeJsStringLiteral(session_.ajaxCanonicalUrl(response)));
-  bootJs.setVar("APP_CLASS", "Wt");
-  bootJs.setVar("PATH_INFO", safeJsStringLiteral
-		(session_.pagePathInfo_));
-
-  bootJs.setCondition("COOKIE_CHECKS", conf.cookieChecks());
-  bootJs.setCondition("SPLIT_SCRIPT", conf.splitScript());
-  bootJs.setCondition("HYBRID", hybrid);
-  bootJs.setCondition("PROGRESS", hybrid && !session_.env().ajax());
-  bootJs.setCondition("DEFER_SCRIPT", true);
-  bootJs.setCondition("WEBGL_DETECT", conf.webglDetect());
-
-  std::string internalPath
-    = hybrid ? session_.app()->internalPath() : session_.env().internalPath();
-  bootJs.setVar("INTERNAL_PATH", safeJsStringLiteral(internalPath));
-
   boot.streamUntil(out, "BOOT_JS");
-  bootJs.stream(out);
+
+  if (!(hybrid && session_.app()->hasQuit())) {
+    FileServe bootJs(skeletons::Boot_js1);
+
+    bootJs.setVar("SELF_URL",
+                  safeJsStringLiteral
+                  (session_.bootstrapUrl(response,
+                                       WebSession::ClearInternalPath)));
+    bootJs.setVar("SESSION_ID", session_.sessionId());
+
+    expectedAckId_ = scriptId_ = WRandom::get();
+    ackErrs_ = 0;
+
+    bootJs.setVar("SCRIPT_ID", scriptId_);
+    bootJs.setVar("RANDOMSEED", WRandom::get());
+    bootJs.setVar("RELOAD_IS_NEWSESSION", conf.reloadIsNewSession());
+    bootJs.setVar("USE_COOKIES",
+                  conf.sessionTracking() == Configuration::CookiesURL);
+    bootJs.setVar("AJAX_CANONICAL_URL",
+                  safeJsStringLiteral(session_.ajaxCanonicalUrl(response)));
+    bootJs.setVar("APP_CLASS", "Wt");
+    bootJs.setVar("PATH_INFO", safeJsStringLiteral
+                  (session_.pagePathInfo_));
+
+    bootJs.setCondition("COOKIE_CHECKS", conf.cookieChecks());
+    bootJs.setCondition("SPLIT_SCRIPT", conf.splitScript());
+    bootJs.setCondition("HYBRID", hybrid);
+    bootJs.setCondition("PROGRESS", hybrid && !session_.env().ajax());
+    bootJs.setCondition("DEFER_SCRIPT", true);
+    bootJs.setCondition("WEBGL_DETECT", conf.webglDetect());
+
+    std::string internalPath
+      = hybrid ? session_.app()->internalPath() : session_.env().internalPath();
+    bootJs.setVar("INTERNAL_PATH", safeJsStringLiteral(internalPath));
+
+    bootJs.stream(out);
+  }
 
   out.spool(response.out());
 }
@@ -1119,8 +1123,6 @@ void WebRenderer::serveMainscript(WebResponse& response)
     currentFormObjectsList_.clear();
     collectJavaScript();
     updateLoadIndicator(collectedJS1_, app, true);
-
-    clearStubbedWidgets();
 
     LOG_DEBUG("js: " << collectedJS1_.str() << collectedJS2_.str());
 
@@ -2064,27 +2066,6 @@ std::string WebRenderer::headDeclarations() const
 void WebRenderer::addWsRequestId(int wsRqId)
 {
   wsRequestsToHandle_.push_back(wsRqId);
-}
-
-void WebRenderer::markAsStubbed(const WWidget *widget)
-{
-  stubbedWidgets_.push_back(widget);
-}
-
-bool WebRenderer::wasStubbed(const WObject *widget) const
-{
-  for (std::size_t i = 0; i < stubbedWidgets_.size(); ++i) {
-    if (stubbedWidgets_[i] == widget)
-      return true;
-  }
-  return false;
-}
-
-void WebRenderer::clearStubbedWidgets()
-{
-  if (expectedAckId_ - scriptId_ > 1) {
-    stubbedWidgets_.clear();
-  }
 }
 
 }

@@ -623,7 +623,7 @@ void WebController::handleRequest(WebRequest *request)
       && !conf_.reloadIsNewSession())
     sessionId = sessionFromCookie(request->headerValue("Cookie"),
 				  request->scriptName(),
-				  conf_.sessionIdLength());
+				  conf_.fullSessionIdLength());
 
   std::string multiSessionCookie;
   if (conf_.sessionTracking() == Configuration::Combined)
@@ -682,6 +682,15 @@ void WebController::handleRequest(WebRequest *request)
 	    return;
 	  }
 	}
+
+        if (request->isWebSocketRequest()) {
+          LOG_INFO_S(&server_, "WebSocket request for non-existing session rejected. "
+                               "This is likely because of a browser with an old session "
+                               "trying to reconnect (e.g. when the server was restarted)");
+          request->setStatus(403);
+          request->flush(WebResponse::ResponseDone);
+          return;
+        }
 
 	if (singleSessionId_.empty()) {
 	  do {

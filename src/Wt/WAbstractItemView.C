@@ -1292,7 +1292,7 @@ void WAbstractItemView::bindObjJS(JSlot& slot, const std::string& jsMethod)
 {
   slot.setJavaScript
     ("function(obj, event) {"
-     """jQuery.data(" + jsRef() + ", 'obj')." + jsMethod + "(obj, event);"
+     """" + jsRef() + ".wtObj." + jsMethod + "(obj, event);"
      "}");
 }
 
@@ -1301,7 +1301,7 @@ void WAbstractItemView::connectObjJS(EventSignalBase& s,
 {
   s.connect
     ("function(obj, event) {"
-     """jQuery.data(" + jsRef() + ", 'obj')." + jsMethod + "(obj, event);"
+     """" + jsRef() + ".wtObj." + jsMethod + "(obj, event);"
      "}");
 }
 
@@ -1416,6 +1416,9 @@ void WAbstractItemView::handleMouseUp(const WModelIndex& index,
 void WAbstractItemView::handleTouchSelect(const std::vector<WModelIndex>& indices,
                                           const WTouchEvent& event)
 {
+  if (indices.empty())
+    return; // no indices, likely due to faulty input
+
   const WModelIndex& index = indices[0];
   touchRegistered_ = true;
   delayedClearAndSelectIndex_ = WModelIndex();

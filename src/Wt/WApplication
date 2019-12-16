@@ -43,6 +43,12 @@ struct WtLibVersion { };
 extern WT_API const WtLibVersion WT_INCLUDED_VERSION;
 #endif
 
+#ifdef WT_TARGET_JAVA
+struct AutoCloseable {
+  virtual void close() = 0;
+};
+#endif // WT_TARGET_JAVA
+
 class WApplication;
 class WCombinedLocalizedStrings;
 class WContainerWidget;
@@ -315,7 +321,7 @@ public:
 
   /** @name Style sheets and CSS
    */
-  //@{
+  //!@{
   /*! \brief Returns a reference to the inline style sheet.
    *
    * Widgets may allow configuration of their look and feel through
@@ -479,7 +485,7 @@ public:
    * \sa setHtmlClass()
    */
   std::string htmlClass() const { return htmlClass_; }
-  //@}
+  //!@}
 
   /*! \brief Sets the window title.
    *
@@ -593,8 +599,8 @@ public:
 
   /*! \brief Refreshes the application.
    *
-   * This lets the application to refresh its data, including strings
-   * from message-resource bundles. This done by propagating
+   * This lets the application refresh its data, including strings
+   * from message resource bundles. This is done by propagating
    * WWidget::refresh() through the widget hierarchy.
    *
    * This method is also called when the user hits the refresh (or
@@ -633,7 +639,7 @@ public:
 
   /** @name URLs and internal paths
    */
-  //@{
+  //!@{
   /*! \brief Returns a URL for the current session
    *
    * Returns the (relative) URL for this application session
@@ -667,7 +673,7 @@ public:
    *
    * The default implementation is not complete: it does not handle relative
    * URL path segments with '..'. It just handles the cases that are necessary for
-   * Wt.
+   * %Wt.
    *
    * This is not used in the library, except when a public URL is
    * needed, e.g. for inclusion in an email.
@@ -820,7 +826,6 @@ public:
    * \code
    * http://www.mydomain.com/stuff/app.wt#/project/z3cbc/details/
    * \endcode
-   * </li><li>
    * </li><li>
    * in a plain HTML session:
    * \code
@@ -1007,7 +1012,7 @@ public:
    * connection.
    */
   void redirect(const std::string& url);
-  //@}
+  //!@}
 
   /*! \brief Returns the URL at which the resources are deployed.
    *
@@ -1135,7 +1140,7 @@ public:
 
   /** @name Manipulation outside the main event loop
    */
-  //@{
+  //!@{
   /*! \brief Enables server-initiated updates.
    *
    * By default, updates to the user interface are possible only at
@@ -1301,6 +1306,9 @@ public:
    */
 #endif // WT_TARGET_JAVA
   class WT_API UpdateLock
+#ifdef WT_TARGET_JAVA
+    : public AutoCloseable
+#endif // WT_TARGET_JAVA
   {
   public:
 #ifndef WT_TARGET_JAVA
@@ -1343,7 +1351,11 @@ public:
      * finalizer/destructor has run to notify helper threads that the
      * application is destroyed).
      */
-    operator bool() const { return ok_; }
+#ifdef DOXYGEN_ONLY
+    explicit operator bool() const { return ok_; }
+#else
+    WT_CXX11ONLY(explicit) operator bool() const { return ok_; }
+#endif
 
     /*! \brief Releases the lock.
      */
@@ -1354,6 +1366,16 @@ public:
      */
     void release();
 #endif
+
+#ifdef WT_TARGET_JAVA
+    /*! \brief Releases the lock.
+     *
+     * Calls release()
+     *
+     * Implemented in order to support the AutoCloseable interface.
+     */
+    virtual void close();
+#endif // WT_TARGET_JAVA
 
   private:
 #ifdef WT_TARGET_JAVA
@@ -1417,11 +1439,11 @@ public:
    * current thread.
    */
   void attachThread(bool attach = true);
-  //@}
+  //!@}
 
   /** @name Invoking JavaScript or including scripts
    */
-  //@{
+  //!@{
   /*! \brief Executes some JavaScript code.
    *
    * This method may be used to call some custom \p javaScript code as
@@ -1530,7 +1552,7 @@ public:
    * page in Wt::WidgtSet mode, without interfering.
    */
   std::string javaScriptClass() { return javaScriptClass_; }
-  //@}
+  //!@}
 
   /*! \brief Processes UI events.
    *
@@ -1922,7 +1944,7 @@ public:
 
   /** @name Global keyboard and mouse events
    */
-  //@{
+  //!@{
   /*! \brief Event signal emitted when a keyboard key is pushed down.
    *
    * The application receives key events when no widget currently
@@ -1972,7 +1994,7 @@ public:
    * \sa See WInteractWidget::escapePressed()
    */
   EventSignal<>& globalEscapePressed();
-  //@}
+  //!@}
 
   /*
    * Returns whether debug was configured.
@@ -2015,8 +2037,6 @@ public:
    */
   void setConfirmCloseMessage(const WString& message);
 
-  /*! \brief Sets the message for the user when the application was .
-   */
   void enableInternalPaths();
 
   // should we move this into an InternalPaths utility class / namespace ?
@@ -2120,8 +2140,8 @@ protected:
    *
    * - for having a single point for exception handling: while you may want
    *   to catch recoverable exceptions in a more appropriate place, general
-   *   (usually fatal) exceptions may be caught here. You will in probably
-   *   also want to catch the same exceptions in the application constructor
+   *   (usually fatal) exceptions may be caught here. You will probably
+   *   want to catch the same exceptions in the application constructor
    *   in the same way.
    * - you want to manage resource usage during requests. For example, at
    *   the end of request handling, you want to return a database session

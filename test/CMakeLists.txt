@@ -13,6 +13,7 @@ IF(ENABLE_LIBWTTEST)
     models/WStandardItemModelTest.C
     private/HttpTest.C
     private/CExpressionParserTest.C
+    private/ColorTest.C
     private/I18n.C
     private/UrlManipTest.C
     render/BlockCssPropertyTest.C
@@ -60,6 +61,7 @@ IF(ENABLE_LIBWTTEST)
       dbo/DboTest3.C
       dbo/DboTest4.C
       dbo/DboTest5.C
+      dbo/DboTest6.C
       dbo/Benchmark.C
       dbo/Benchmark2.C
       dbo/JsonTest.C

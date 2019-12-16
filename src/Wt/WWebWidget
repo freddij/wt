@@ -408,6 +408,7 @@ private:
   static const char *BLUR_SIGNAL;
 
   static const int DEFAULT_BASE_Z_INDEX;
+  static const int Z_INDEX_INCREMENT;
 
   std::string elementTagName_;
 
@@ -569,6 +570,8 @@ private:
 
   void jsScrollVisibilityChanged(bool visible);
 
+  void emitChildrenChanged();
+
 protected:
   void setRendered(bool rendered);
 
@@ -599,9 +602,11 @@ protected:
   friend class WContainerWidget;
   friend class WCssDecorationStyle;
   friend class WCssTemplateRule;
+  friend class WDialog;
   friend class WFont;
   friend class WGLWidget;
   friend class WInteractWidget;
+  friend class WLeafletMap;
   friend class JSlot;
   friend class WTable;
   friend class WViewWidget;

@@ -16,6 +16,8 @@
 
 #include <hpdf.h>
 
+#include <map>
+
 namespace Wt {
 
   class FontSupport;
@@ -109,19 +111,18 @@ public:
    * is used by pango) to only return TrueType fonts. This can be
    * done using a fonts.conf configuration %file:
    *
-   * \htmlonly
-   * <pre>
-&lt;?xml version='1.0'?&gt;
-&lt;!DOCTYPE fontconfig SYSTEM 'fonts.dtd'&gt;
-&lt;fontconfig&gt;
-    &lt;selectfont&gt;
-      &lt;rejectfont&gt;
-	 &lt;glob&gt;*.pfb&lt;/glob&gt;
-      &lt;/rejectfont&gt;
-    &lt;/selectfont&gt;
-&lt;/fontconfig&gt;
-   * </pre>
-   * \endhtmlonly
+   * \code{.xml}
+   * <?xml version='1.0'?>
+   * <!DOCTYPE fontconfig SYSTEM 'fonts.dtd'>
+   * <fontconfig>
+   *   <selectfont>
+   *     <rejectfont>
+   *       <glob>*.pfb</glob>
+   *     </rejectfont>
+   *   </selectfont>
+   * </fontconfig>
+   * \endcode
+   *
    * You may need to add more glob patterns to exclude other fonts
    * than TrueType, and also to exclude TrueType fonts which do not
    * work properly with libharu.
@@ -187,6 +188,8 @@ private:
   std::map<std::string, const char *> ttfFonts_;
   WFont currentFont_;
   std::string currentTtfFont_;
+  std::map<int, HPDF_ExtGState> alphaStrokeExtGStateMap_;
+  std::map<int, HPDF_ExtGState> alphaFillExtGStateMap_;
 
   bool myPdf_;
   double x_, y_;
@@ -196,6 +199,8 @@ private:
   void paintPath();
   void drawPlainPath(const WPainterPath& path);
   void applyTransform(const WTransform& f);
+  void setStrokeColor(WColor color);
+  void setFillColor(WColor color);
 };
 
 }

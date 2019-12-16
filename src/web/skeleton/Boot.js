@@ -253,9 +253,9 @@ var tzOffset = (new Date()).getTimezoneOffset();
 otherInfo += "&tz=" + (-tzOffset);
 
 // determine time zone name, if available
-if (Intl &&
-    Intl.DateTimeFormat() &&
-    Intl.DateTimeFormat().resolvedOptions &&
+if (typeof Intl === 'object' &&
+    typeof Intl.DateTimeFormat === "function" &&
+    typeof Intl.DateTimeFormat().resolvedOptions === "function" &&
     Intl.DateTimeFormat().resolvedOptions().timeZone) {
   otherInfo += "&tzS=" + encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
 }

@@ -135,7 +135,28 @@ WColor WCartesianChart::lightenColor(const WColor& in)
 
 CurveLabel::CurveLabel(const WDataSeries &series, const WPointF &point, const WT_USTRING &label)
   : series_(&series),
-    point_(point),
+#ifndef WT_TARGET_JAVA
+    x_(point.x()),
+    y_(point.y()),
+#endif // WT_TARGET_JAVA
+    label_(label),
+    offset_(60, -20),
+    width_(0),
+    linePen_(WColor(0,0,0)),
+    textPen_(WColor(0,0,0)),
+    boxBrush_(WColor(255,255,255)),
+    markerBrush_(WColor(0,0,0))
+{
+#ifdef WT_TARGET_JAVA
+  x_ = point.x();
+  y_ = point.y();
+#endif // WT_TARGET_JAVA
+}
+
+CurveLabel::CurveLabel(const WDataSeries &series, const boost::any &x, const boost::any &y,const WT_USTRING &label)
+  : series_(&series),
+    x_(x),
+    y_(y),
     label_(label),
     offset_(60, -20),
     width_(0),
@@ -152,7 +173,19 @@ void CurveLabel::setSeries(const WDataSeries &series)
 
 void CurveLabel::setPoint(const WPointF &point)
 {
-  point_ = point;
+  x_ = point.x();
+  y_ = point.y();
+}
+
+void CurveLabel::setPoint(const boost::any &x, const boost::any &y)
+{
+  x_ = x;
+  y_ = y;
+}
+
+const WPointF CurveLabel::point() const
+{
+  return WPointF(asNumber(x_), asNumber(y_));
 }
 
 void CurveLabel::setLabel(const WT_USTRING &label)
@@ -1004,6 +1037,7 @@ public:
   MarkerRenderIterator(const WCartesianChart& chart, WPainter& painter)
     : chart_(chart),
       painter_(painter),
+      currentMarkerType_(NoMarker),
       currentScale_(0),
       series_(0)
   { }
@@ -1025,7 +1059,8 @@ public:
 
   virtual void endSeries()
   {
-    finishPathFragment(*series_);
+    if (series_)
+      finishPathFragment(*series_);
     series_ = 0;
 
     if (needRestore_)
@@ -1038,10 +1073,18 @@ public:
 			int yRow, int yColumn)
   {
     if (!Utils::isNaN(x) && !Utils::isNaN(y)) {
-      WPointF p = chart_.map(x, y, series.axis(),
+      WPointF p = chart_.map(x, y, series.yAxis(),
 			     currentXSegment(), currentYSegment());
 
-      if (!marker_.isEmpty()) {
+      const MarkerType *pointMarker = series.model()->markerType(yRow, yColumn);
+      if (!pointMarker) {
+        pointMarker = series.model()->markerType(xRow, xColumn);
+      }
+      MarkerType markerType = series.marker();
+      if (pointMarker) {
+        markerType = *pointMarker;
+      }
+      if (markerType != NoMarker) {
 	WPen pen = WPen(series.markerPen());
 	SeriesIterator::setPenColor(pen, series, xRow, xColumn, yRow, yColumn, MarkerPenColorRole);
 	if (chart_.seriesSelectionEnabled() &&
@@ -1062,7 +1105,8 @@ public:
 	if (!series_ ||
 	    brush != currentBrush_ ||
 	    pen != currentPen_ ||
-	    scale != currentScale_) {
+            scale != currentScale_ ||
+            markerType != currentMarkerType_) {
 	  if (series_) {
 	    finishPathFragment(*series_);
 	  }
@@ -1071,6 +1115,20 @@ public:
 	  currentBrush_ = brush;
 	  currentPen_ = pen;
 	  currentScale_ = scale;
+
+          if (markerType != currentMarkerType_) {
+            marker_ = WPainterPath();
+            currentMarkerType_ = markerType;
+            if (pointMarker) {
+              chart_.drawMarker(series, markerType, marker_);
+            } else {
+              chart_.drawMarker(series, marker_);
+            }
+            if (!needRestore_) {
+              painter_.save();
+              needRestore_ = true;
+            }
+          }
 	}
 
 	pathFragment_.moveTo(hv(p));
@@ -1123,6 +1181,7 @@ private:
   WPainterPath pathFragment_;
   WPen currentPen_;
   WBrush currentBrush_;
+  MarkerType currentMarkerType_;
   double currentScale_;
   const WDataSeries *series_;
 
@@ -1161,10 +1220,10 @@ private:
     painter_.setPen(NoPen);
     painter_.setBrush(NoBrush);
     painter_.setShadow(series.shadow());
-    if (series.marker() != CrossMarker &&
-	series.marker() != XCrossMarker &&
-	series.marker() != AsteriskMarker &&
-	series.marker() != StarMarker) {
+    if (currentMarkerType_ != CrossMarker &&
+        currentMarkerType_ != XCrossMarker &&
+        currentMarkerType_ != AsteriskMarker &&
+        currentMarkerType_ != StarMarker) {
       painter_.setBrush(currentBrush_);
 
       if (!series.shadow().none())
@@ -1219,7 +1278,7 @@ public:
       double scaledRx = scaleFactor * rX_;
       double scaledRy = scaleFactor * rYs_[series.yAxis()];
       
-      WPointF p = chart_.map(x, y, series.axis(), currentXSegment(), currentYSegment());
+      WPointF p = chart_.map(x, y, series.yAxis(), currentXSegment(), currentYSegment());
       double dx = p.x() - matchX_;
       double dy = p.y() - matchYs_[series.yAxis()];
       double dx2 = dx * dx;
@@ -2961,10 +3020,17 @@ bool WCartesianChart::initLayout(const WRectF& rectangle, WPaintDevice *device)
 void WCartesianChart::drawMarker(const WDataSeries& series,
 				 WPainterPath& result) const
 {
+  drawMarker(series, series.marker(), result);
+}
+
+void WCartesianChart::drawMarker(const WDataSeries &series,
+                                 MarkerType marker,
+                                 WPainterPath &result) const
+{
   const double size = 6.0;
   const double hsize = size/2;
 
-  switch (series.marker()) {
+  switch (marker) {
   case CircleMarker:
     result.addEllipse(-hsize, -hsize, size, size);
     break;
@@ -3395,6 +3461,9 @@ void WCartesianChart::renderGrid(WPainter& painter, const WAxis& ax) const
     return;
 
   bool isYAxis = ax.id() != XAxis;
+  
+  if (!isYAxis && yAxes_.empty())
+    return;
 
   const WAxis& other = isYAxis ? axis(XAxis) : axis(Y1Axis);
   const WAxis::Segment& s0 = other.segments_.front();
@@ -3919,19 +3988,21 @@ void WCartesianChart::renderCurveLabels(WPainter &painter) const
 	}
 	// Find the right x and y segment
 	int xSegment = 0;
+        double x = axis(XAxis).getValue(label.x());
         if (!isInteractive())
-          while (xSegment < axis(XAxis).segmentCount() && (axis(XAxis).segments_[xSegment].renderMinimum > label.point().x()
-                                    || axis(XAxis).segments_[xSegment].renderMaximum < label.point().x()))
+          while (xSegment < axis(XAxis).segmentCount() && (axis(XAxis).segments_[xSegment].renderMinimum > x
+                                    || axis(XAxis).segments_[xSegment].renderMaximum < x))
             ++xSegment;
 	int ySegment = 0;
+        double y = yAxis(series.yAxis()).getValue(label.y());
         if (!isInteractive())
-          while (ySegment < axis(series.axis()).segmentCount() && (axis(series.axis()).segments_[ySegment].renderMinimum > label.point().y()
-                                    || axis(series.axis()).segments_[ySegment].renderMaximum < label.point().y()))
+          while (ySegment < yAxis(series.yAxis()).segmentCount() && (yAxis(series.yAxis()).segments_[ySegment].renderMinimum > y
+                                    || yAxis(series.yAxis()).segments_[ySegment].renderMaximum < y))
             ++ySegment;
 	// Only draw the label if it is actually on a segment
-	if (xSegment < axis(XAxis).segmentCount() && ySegment < axis(series.axis()).segmentCount()) {
+        if (xSegment < axis(XAxis).segmentCount() && ySegment < yAxis(series.yAxis()).segmentCount()) {
 	  // Figure out the device coordinates of the point to draw a label at.
-	  WPointF devicePoint = mapToDeviceWithoutTransform(label.point().x(), label.point().y(), series.axis(), xSegment, ySegment);
+          WPointF devicePoint = mapToDeviceWithoutTransform(label.x(), label.y(), series.yAxis(), xSegment, ySegment);
 	  WTransform translation = WTransform().translate(t.map(devicePoint));
 	  painter.save();
 	  painter.setWorldTransform(translation);
@@ -4671,7 +4742,7 @@ WTransform WCartesianChart::curveTransform(const WDataSeries &series) const
 
 std::string WCartesianChart::cObjJsRef() const
 {
-  return "jQuery.data(" + jsRef() + ",'cobj')";
+  return jsRef() + ".wtCObj";
 }
 
 void WCartesianChart::addAxisSliderWidget(WAxisSliderWidget *slider)

@@ -36,6 +36,12 @@
 namespace Wt {
   namespace Json {
 
+namespace {
+
+static const int MAX_RECURSION_DEPTH = 1000;
+
+}
+
 ParseError::ParseError()
   : WException(std::string())
 { }
@@ -62,7 +68,8 @@ struct json_grammar : public qi::grammar<Iterator, ascii::space_type>
 
   json_grammar(Value& result)
     : json_grammar::base_type(root),
-      result_(result)
+      result_(result),
+      recursionDepth_(0)
   {
     create();
 
@@ -91,7 +98,7 @@ struct json_grammar : public qi::grammar<Iterator, ascii::space_type>
       = object | array;
     
     object
-      =  lit('{')[boost::bind(&Self::startObject, this)]
+      =  lit('{')[boost::bind(&Self::startObject, this, _3)]
       >> -(member % ',')
       >> lit('}')[boost::bind(&Self::endObject, this)]
       ;
@@ -103,7 +110,7 @@ struct json_grammar : public qi::grammar<Iterator, ascii::space_type>
       ;
                 
     array 
-      = lit('[')[boost::bind(&Self::startArray, this)]
+      = lit('[')[boost::bind(&Self::startArray, this, _3)]
       >> -(value % ',')
       >> lit(']')[boost::bind(&Self::endArray, this)]
       ;
@@ -141,19 +148,25 @@ struct json_grammar : public qi::grammar<Iterator, ascii::space_type>
 
   typedef boost::iterator_range<std::string::const_iterator> StrValue;
 
-  void startObject()
+  void startObject(bool &pass)
   {
     refCurrent();
 
     *currentValue_ = Value(ObjectType);
     objectStack_.push_back(&((Object&) (*currentValue_)));
     state_.push_back(InObject);
+
+    ++recursionDepth_;
+
+    pass = recursionDepth_ <= MAX_RECURSION_DEPTH;
   }
 
   void endObject()
   {
     state_.pop_back();
     objectStack_.pop_back();
+
+    --recursionDepth_;
   }
 
   void setMemberName(const StrValue& value)
@@ -164,19 +177,25 @@ struct json_grammar : public qi::grammar<Iterator, ascii::space_type>
     s_.clear();
   }
 
-  void startArray()
+  void startArray(bool &pass)
   {
     refCurrent();
 
     *currentValue_ = Value(ArrayType);
     arrayStack_.push_back(&((Array&) (*currentValue_)));
     state_.push_back(InArray);
+
+    ++recursionDepth_;
+
+    pass = recursionDepth_ <= MAX_RECURSION_DEPTH;
   }
 
   void endArray()
   {
     state_.pop_back();
     arrayStack_.pop_back();
+
+    --recursionDepth_;
   }
 
   void setStringValue(const StrValue& value)
@@ -246,6 +265,7 @@ struct json_grammar : public qi::grammar<Iterator, ascii::space_type>
 private:
   Value& result_;
   Value *currentValue_;
+  int recursionDepth_;
 
   std::list<Object *> objectStack_;
   std::list<Array *> arrayStack_;
@@ -286,7 +306,13 @@ namespace {
 
     std::string::const_iterator begin = validated_string.begin();
     std::string::const_iterator end = validated_string.end();
-    bool success = qi::phrase_parse(begin, end, g, ascii::space);
+    bool success = false;
+
+    try {
+      success = qi::phrase_parse(begin, end, g, ascii::space);
+    } catch (const std::exception &e) {
+      throw ParseError(e.what());
+    }
 
     if (success) {
       if (begin != end)
@@ -316,7 +342,7 @@ bool parse(const std::string& input, Value& result, ParseError& error, bool vali
   try {
     parseJson(input, result, validateUTF8);
     return true;
-  } catch (ParseError& e) {
+  } catch (const ParseError& e) {
     error.setError(e.what());
     return false;
   }
@@ -338,7 +364,7 @@ bool parse(const std::string& input, Object& result, ParseError& error, bool val
   try {
     parse(input, result, validateUTF8);
     return true;
-  } catch (std::exception& e) {
+  } catch (const ParseError& e) {
     error.setError(e.what());
     return false;
   }
@@ -360,7 +386,7 @@ bool parse(const std::string& input, Array& result, ParseError& error, bool vali
   try {
     parse(input, result, validateUTF8);
     return true;
-  } catch (std::exception& e) {
+  } catch (const ParseError& e) {
     error.setError(e.what());
     return false;
   }

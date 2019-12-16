@@ -36,9 +36,10 @@
 #include <memory>
 
 #ifdef WT_CXX11
-#define AUTO_PTR std::unique_ptr
+#define SCOPED_PTR std::unique_ptr
 #else
-#define AUTO_PTR std::auto_ptr
+#include <boost/scoped_ptr.hpp>
+#define SCOPED_PTR boost::scoped_ptr
 #endif
 
 namespace Wt {
@@ -234,8 +235,17 @@ WWidget *AuthWidget::createLostPasswordView()
 
 void AuthWidget::letUpdatePassword(const User& user, bool promptPassword)
 {
-  showDialog(tr("Wt.Auth.updatepassword"),
-	     createUpdatePasswordView(user, promptPassword));
+  WWidget *updatePasswordView = createUpdatePasswordView(user, promptPassword);
+
+  UpdatePasswordWidget *defaultUpdatePasswordWidget =
+      dynamic_cast<UpdatePasswordWidget*>(updatePasswordView);
+
+  showDialog(tr("Wt.Auth.updatepassword"), updatePasswordView);
+
+  if (defaultUpdatePasswordWidget) {
+    defaultUpdatePasswordWidget->updated().connect(this, &AuthWidget::closeDialog);
+    defaultUpdatePasswordWidget->canceled().connect(this, &AuthWidget::closeDialog);
+  }
 }
 
 WWidget *AuthWidget::createUpdatePasswordView(const User& user,
@@ -455,7 +465,7 @@ void AuthWidget::oAuthDone(OAuthProcess *oauth, const Identity& identity)
 	       << identity.id() << ", "
 	       << identity.name() << ", " << identity.email());
 
-    AUTO_PTR<AbstractUserDatabase::Transaction>
+    SCOPED_PTR<AbstractUserDatabase::Transaction>
       t(model_->users().startTransaction());
 
     User user = model_->baseAuth()->identifyUser(identity, model_->users());

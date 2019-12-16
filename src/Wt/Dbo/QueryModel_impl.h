@@ -9,6 +9,8 @@
 
 #include <Wt/Dbo/QueryColumn>
 
+#include <boost/lexical_cast.hpp>
+
 namespace Wt {
   namespace Dbo {
 
@@ -124,7 +126,10 @@ int QueryModel<Result>::rowCount(const WModelIndex& parent) const
 
       query_.limit(queryLimit_);
       query_.offset(queryOffset_);
-      cachedRowCount_ = static_cast<int>(query_.resultList().size());
+
+      Query<Result> unorderedQuery(query_);
+      unorderedQuery.orderBy("");
+      cachedRowCount_ = static_cast<int>(unorderedQuery.resultList().size());
 
       transaction.commit();
     }
@@ -252,7 +257,10 @@ Result& QueryModel<Result>::resultRow(int row)
   cacheRow(row);
 
   if (row >= cacheStart_ + static_cast<int>(cache_.size()))
-    throw Exception("QueryModel: geometry inconsistent with database");
+    throw Exception("QueryModel: geometry inconsistent with database: "
+                    "row (= " + boost::lexical_cast<std::string>(row) + ") >= "
+                    "cacheStart_ (= " + boost::lexical_cast<std::string>(cacheStart_) + ") + "
+                    "cache_.size() (= " + boost::lexical_cast<std::string>(cache_.size()) + ")");
 
   return cache_[row - cacheStart_];
 }

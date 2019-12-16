@@ -565,7 +565,7 @@ private:
 
   void setValue(int column, const std::string& value) {
     if (column >= paramCount_)
-      throw PostgresException("Binding too much parameters");
+      throw PostgresException("Binding too many parameters");
 
     for (int i = (int)params_.size(); i <= column; ++i)
       params_.push_back(Param());
@@ -589,7 +589,14 @@ private:
 	else if (sql_[i] == '"')
 	  state = DQuote;
 	else if (sql_[i] == '?') {
-	  result << '$' << placeholder++;
+          if (i + 1 != sql_.length() &&
+              sql_[i + 1] == '?') {
+            // escape question mark with double question mark
+            result << '?';
+            ++i;
+          } else {
+	    result << '$' << placeholder++;
+          }
 	  continue;
 	}
 	break;

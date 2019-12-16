@@ -175,7 +175,8 @@ WAxis::WAxis()
     partialLabelClipping_(true),
     inverted_(false),
     renderingMirror_(false),
-    renderInterval_(0.0)
+    renderInterval_(0.0),
+    fullRenderLength_(0.0)
 {
   titleFont_.setFamily(WFont::SansSerif, "Arial");
   titleFont_.setSize(WFont::FixedSize, WLength(12, WLength::Point));
@@ -1011,6 +1012,10 @@ double WAxis::getValue(const boost::any& v) const
     }
 #endif
 
+    else if (v.type() == typeid(double)) {
+      return boost::any_cast<double>(v);
+    }
+
     else {
       return std::numeric_limits<double>::signaling_NaN();
     }
@@ -1028,6 +1033,10 @@ double WAxis::getValue(const boost::any& v) const
       return static_cast<double>(dt.toTime_t());
     }
 #endif
+
+    else if (v.type() == typeid(double)) {
+      return boost::any_cast<double>(v);
+    }
 
     else {
       return std::numeric_limits<double>::signaling_NaN();

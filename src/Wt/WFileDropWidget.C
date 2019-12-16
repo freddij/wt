@@ -49,7 +49,7 @@ WFileDropWidget::File::File(int id, const std::string& fileName,
 
 const Http::UploadedFile& WFileDropWidget::File::uploadedFile() const {
   if (!uploadFinished_)
-    throw std::exception();
+    throw WException("Can not access uploaded files before upload is done.");
   else
     return uploadedFile_;
 }
@@ -109,7 +109,6 @@ NestedResource::WFileDropUploadResource(WFileDropWidget *fileDropWidget,
 					File *file)
   : WResource(fileDropWidget),
     parent_(fileDropWidget),
-    app_(WApplication::instance()),
     currentFile_(file)
 {
   setUploadProgress(true);
@@ -123,11 +122,17 @@ NestedResource::~WFileDropUploadResource()
 void NestedResource::handleRequest(const Http::Request& request,
 				   Http::Response& response)
 {
+  // In JWt we still have the update lock
 #ifndef WT_TARGET_JAVA
+  /**
+   * Taking the update-lock (rather than posting to the event loop):
+   *   - guarantee that the updates to WFileDropWidget happen immediately, 
+   *     before any application-code is called by the finished upload.
+   *   - only Wt-code is executed within this lock
+   */
   WApplication::UpdateLock lock(WApplication::instance());
-#else
-  WApplication::UpdateLock lock = WApplication::instance()->getUpdateLock();
-#endif
+#endif // WT_TARGET_JAVA
+  
   const std::string *fileId = request.getParameter("file-id");
   if (fileId == 0 || (*fileId).empty()) {
     response.setStatus(404);
@@ -162,9 +167,6 @@ void NestedResource::handleRequest(const Http::Request& request,
   }
 
   response.setMimeType("text/plain"); // else firefox complains
-#ifdef WT_TARGET_JAVA
-  lock.release();
-#endif
 }
 
 
@@ -185,7 +187,8 @@ WFileDropWidget::WFileDropWidget(WContainerWidget *parent)
     fileTooLarge_(this, "filetoolarge"),
     uploadFinished_(this, "uploadfinished"),
     doneSending_(this, "donesending"),
-    jsFilterNotSupported_(this, "filternotsupported")
+    jsFilterNotSupported_(this, "filternotsupported"),
+    updatesEnabled_(false)
 {
   WApplication *app = WApplication::instance();
   if (!app->environment().ajax())
@@ -308,6 +311,7 @@ void WFileDropWidget::handleSendRequest(int id)
     doJavaScript(jsRef() + ".cancelUpload("
 		 + boost::lexical_cast<std::string>(id) + ");");
   else {
+    updatesEnabled_ = true;
     WApplication::instance()->enableUpdates(true);
   }
 }
@@ -334,7 +338,10 @@ void WFileDropWidget::stopReceiving()
     // 	      << "cancelling expected uploads"
     // 	      << std::endl;
     currentFileIdx_ = uploads_.size();
-    WApplication::instance()->enableUpdates(false);
+    if (updatesEnabled_) {
+      WApplication::instance()->enableUpdates(false);
+      updatesEnabled_ = false;
+    }
   }
 }
 
@@ -350,7 +357,10 @@ void WFileDropWidget::proceedToNextFile()
 
   currentFileIdx_++;
   if (currentFileIdx_ == uploads_.size()) {
-    WApplication::instance()->enableUpdates(false);
+    if (updatesEnabled_) {
+      WApplication::instance()->enableUpdates(false);
+      updatesEnabled_ = false;
+    }
   }
 }
 

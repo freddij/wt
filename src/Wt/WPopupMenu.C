@@ -46,7 +46,7 @@ WPopupMenu::WPopupMenu(WStackedWidget *contentsStack)
 
   app->addGlobalWidget(this);
   // Set high ZIndex so WPopupMenu is above pretty much every dialog by default
-  webWidget()->setBaseZIndex(10000);
+  webWidget()->setBaseZIndex(110000);
   setPopup(true);
 
   hide();
@@ -105,7 +105,7 @@ void WPopupMenu::setHidden(bool hidden, const WAnimation& animation)
 
   if (cancel_.isConnected() ||
       WApplication::instance()->session()->renderer().preLearning())
-    doJavaScript("jQuery.data(" + jsRef() + ", 'obj').setHidden("
+    doJavaScript(jsRef() + ".wtObj.setHidden("
                  + (hidden ? "1" : "0") + ");");
 }
 
@@ -148,7 +148,7 @@ void WPopupMenu::popup(WWidget *location, Orientation orientation)
 
   popupImpl();
 
-  doJavaScript("jQuery.data(" + jsRef() + ", 'obj').popupAt("
+  doJavaScript(jsRef() + ".wtObj.popupAt("
                + location->jsRef() + ");");
 
   positionAt(location, orientation);

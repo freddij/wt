@@ -29,6 +29,10 @@
 #define VERIFY_CERTIFICATE
 #endif
 
+#ifdef WT_WIN32
+#include "web/SslUtils.h"
+#endif // WT_WIN32
+
 #endif // WT_WITH_SSL
 
 #ifdef WT_WIN32
@@ -45,6 +49,14 @@ typedef std::chrono::seconds asio_timer_seconds;
 typedef boost::asio::deadline_timer asio_timer;
 typedef boost::posix_time::seconds asio_timer_seconds;
 #endif
+
+namespace {
+const int STATUS_NO_CONTENT = 204;
+const int STATUS_MOVED_PERMANENTLY = 301;
+const int STATUS_FOUND = 302;
+const int STATUS_SEE_OTHER = 303;
+const int STATUS_TEMPORARY_REDIRECT = 307;
+}
 
 namespace Wt {
 
@@ -72,7 +84,8 @@ public:
       timeout_(0),
       maximumResponseSize_(0),
       responseSize_(0),
-      aborted_(false)
+      aborted_(false),
+      headersOnly_(false)
   { }
 
   virtual ~Impl() { }
@@ -89,6 +102,8 @@ public:
 	       const std::string& server, int port, const std::string& path,
 	       const Message& message)
   {
+    headersOnly_ = (method == "HEAD");
+
     std::ostream request_stream(&requestBuf_);
     request_stream << method << " " << path << " HTTP/1.1\r\n";
     if ((protocol == "http" && port == 80) || (protocol == "https" && port == 443))
@@ -114,7 +129,7 @@ public:
       request_stream << "Content-Length: " << message.body().length() 
 		     << "\r\n";
 
-    request_stream << "Connection: close\r\n\r\n";
+    request_stream << "\r\n";
 
     if (method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH")
       request_stream << message.body();
@@ -388,6 +403,7 @@ private:
       }
 
       chunkedResponse_ = false;
+      contentLength_ = -1;
 
       // Process the response headers.
       std::istream response_stream(&responseBuf_);
@@ -405,6 +421,10 @@ private:
 	    chunkState_.size = 0;
 	    chunkState_.parsePos = 0;
 	    chunkState_.state = ChunkState::Size;
+          } else if (!headersOnly_ &&
+                     boost::iequals(name, "Content-Length")) {
+	    std::stringstream ss(value);
+	    ss >> contentLength_;
 	  }
 	}
       }
@@ -418,7 +438,7 @@ private:
 	  emitHeadersReceived();
       }
 
-      bool done = false;
+      bool done = headersOnly_ || response_.status() == STATUS_NO_CONTENT;
       // Write whatever content we already have to output.
       if (responseBuf_.size() > 0) {
 	std::stringstream ss;
@@ -509,7 +529,9 @@ private:
 
       LOG_DEBUG("Data: " << text);
       haveBodyData(text);
-      return false;
+
+      return (contentLength_ >= 0) &&
+	(response_.body().size() >= contentLength_);
     }
   }
 
@@ -661,12 +683,14 @@ private:
   std::size_t maximumResponseSize_, responseSize_;
   bool chunkedResponse_;
   ChunkState chunkState_;
+  int contentLength_;
   boost::system::error_code err_;
   Message response_;
   Signal<boost::system::error_code, Message> done_;
   Signal<Message> headersReceived_;
   Signal<std::string> bodyDataReceived_;
   bool aborted_;
+  bool headersOnly_;
 };
 
 class Client::TcpImpl : public Client::Impl
@@ -875,6 +899,18 @@ bool Client::get(const std::string& url,
   return request(Get, url, m);
 }
 
+bool Client::head(const std::string& url)
+{
+  return request(Head, url, Message());
+}
+
+bool Client::head(const std::string& url,
+                  const std::vector<Message::Header> headers)
+{
+  Message m(headers);
+  return request(Head, url, m);
+}
+
 bool Client::post(const std::string& url, const Message& message)
 {
   return request(Post, url, message);
@@ -953,10 +989,13 @@ bool Client::request(Http::Method method, const std::string& url,
 
     context.set_options(sslOptions);
 
-
 #ifdef VERIFY_CERTIFICATE
-    if (verifyEnabled_)
+    if (verifyEnabled_) {
       context.set_default_verify_paths();
+#ifdef WT_WIN32
+      Ssl::addWindowsCACertificates(context);
+#endif // WT_WIN32
+    }
 
     if (!verifyFile_.empty() || !verifyPath_.empty()) {
       if (!verifyFile_.empty())
@@ -994,7 +1033,7 @@ bool Client::request(Http::Method method, const std::string& url,
   impl_->setTimeout(timeout_);
   impl_->setMaximumResponseSize(maximumResponseSize_);
 
-  const char *methodNames_[] = { "GET", "POST", "PUT", "DELETE", "PATCH" };
+  const char *methodNames_[] = { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD" };
 
   LOG_DEBUG(methodNames_[method] << " " << url);
 
@@ -1037,7 +1076,10 @@ void Client::handleRedirect(Http::Method method, boost::system::error_code err, 
   }
   impl_.reset();
   int status = response.status();
-  if (!err && (((status == 301 || status == 302 || status == 307) && method == Get) || status == 303)) {
+  if (!err && (((status == STATUS_MOVED_PERMANENTLY ||
+                 status == STATUS_FOUND ||
+                 status == STATUS_TEMPORARY_REDIRECT) && method == Get) ||
+               status == STATUS_SEE_OTHER)) {
     const std::string *newUrl = response.getHeader("Location");
     ++ redirectCount_;
     if (newUrl) {
@@ -1081,14 +1123,19 @@ bool Client::parseUrl(const std::string &url, URL &parsedUrl)
   std::string rest = url.substr(i + 3);
   // find auth
   std::size_t l = rest.find('@');
-  if (l != std::string::npos) {
+  // find host
+  std::size_t j = rest.find('/');
+  if (l != std::string::npos &&
+      (j == std::string::npos || j > l)) {
+    // above check: userinfo can not contain a forward slash
+    // path may contain @ (issue #7272)
     parsedUrl.auth = rest.substr(0, l);
     parsedUrl.auth = Wt::Utils::urlDecode(parsedUrl.auth);
     rest = rest.substr(l+1);
+    if (j != std::string::npos) {
+      j -= l + 1;
+    }
   }
-
-  // find host
-  std::size_t j = rest.find('/');
 
   if (j == std::string::npos) {
     parsedUrl.host = rest;

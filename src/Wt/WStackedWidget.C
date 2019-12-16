@@ -17,6 +17,7 @@ namespace Wt {
 
 WStackedWidget::WStackedWidget(WContainerWidget *parent)
   : WContainerWidget(parent),
+    autoReverseAnimation_(false),
     currentIndex_(-1),
     widgetsAdded_(false),
     javaScriptDefined_(false),
@@ -103,7 +104,7 @@ void WStackedWidget::setCurrentIndex(int index, const WAnimation& animation,
     WWidget *previous = currentWidget();
 
     if (previous)
-      doJavaScript("$('#" + id() + "').data('obj').adjustScroll("
+      doJavaScript(jsRef() + ".wtObj.adjustScroll("
 		   + previous->jsRef() + ");");
 
     setJavaScriptMember("wtAutoReverse", autoReverse ? "true" : "false");
@@ -122,7 +123,7 @@ void WStackedWidget::setCurrentIndex(int index, const WAnimation& animation,
 	widget(i)->setHidden(currentIndex_ != i);
 
     if (currentIndex_ >= 0 && isRendered() && javaScriptDefined_)
-      doJavaScript("$('#" + id() + "').data('obj').setCurrent("
+      doJavaScript(jsRef() + ".wtObj.setCurrent("
 		   + widget(currentIndex_)->jsRef() + ");");
   }
 }
@@ -135,7 +136,7 @@ void WStackedWidget::loadAnimateJS()
       LOAD_JAVASCRIPT(WApplication::instance(), "js/WStackedWidget.js",
 		      "WStackedWidget.prototype.animateChild", wtjs2);
       setJavaScriptMember("wtAnimateChild",
-			  "$('#" + id() + "').data('obj').animateChild");
+			  jsRef() + ".wtObj.animateChild");
       setJavaScriptMember("wtAutoReverse",
 			  autoReverseAnimation_ ? "true" : "false");
     }
@@ -154,9 +155,9 @@ void WStackedWidget::defineJavaScript()
 			+ app->javaScriptClass() + "," + jsRef() + ");");
 
     setJavaScriptMember(WT_RESIZE_JS,
-			"$('#" + id() + "').data('obj').wtResize");
+			jsRef() + ".wtObj.wtResize");
     setJavaScriptMember(WT_GETPS_JS,
-			"$('#" + id() + "').data('obj').wtGetPs");
+			jsRef() + ".wtObj.wtGetPs");
 
     if (loadAnimateJS_) {
       loadAnimateJS_ = false;
@@ -177,7 +178,7 @@ void WStackedWidget::render(WFlags<RenderFlag> flags)
   if (flags & RenderFull) {
     defineJavaScript();
     if (currentIndex_ >= 0 && isRendered() && javaScriptDefined_)
-      doJavaScript("$('#" + id() + "').data('obj').setCurrent("
+      doJavaScript(jsRef() + ".wtObj.setCurrent("
 		   + widget(currentIndex_)->jsRef() + ");");
   }
 

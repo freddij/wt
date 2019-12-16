@@ -12,7 +12,7 @@ WT_DECLARE_WT_MEMBER
 	  defaultValue, isDropDownIconUnfiltered) {
    $('.Wt-domRoot').add(el);
 
-   jQuery.data(el, 'obj', this);
+   el.wtObj = this;
 
    var self = this;
    var WT = APP.WT;
@@ -403,9 +403,16 @@ WT_DECLARE_WT_MEMBER
 
      var regexp;
      if (wordRegexp.length == 0) {
-       if (wordSeparators.length != 0)
-	 regexp = "(^|(?:[" + wordSeparators + "]))";
-       else
+       if (wordSeparators.length != 0) {
+         regexp = "(^|(?:[";
+         for (var i = 0; i < wordSeparators.length; ++i) {
+           var hexCode = wordSeparators.charCodeAt(i).toString(16);
+           while (hexCode.length < 4)
+             hexCode = "0" + hexCode;
+           regexp += "\\u" + hexCode;
+         }
+         regexp += "]))";
+       } else
 	 regexp = "(^)";
      } else
        regexp = "(" + wordRegexp + ")";

@@ -55,14 +55,17 @@ namespace {
 }
 #endif
 
+#include <algorithm>
+#include <utility>
+
 namespace {
   static const double EPSILON = 1E-5;
 
   double adjust360(double d) {
-    if (std::fabs(d - 360) < 0.01)
-      return 359.5;
-    else if (std::fabs(d + 360) < 0.01)
-      return -359.5;
+    if (d > 360.0)
+      return 360.0;
+    else if (d < -360.0)
+      return -360.0;
     else 
       return d;
   }
@@ -110,6 +113,13 @@ public:
   int currentClipPathRendered_;
   WRasterImage *rasterImage_;
 
+  // Required for WResource implementation
+  std::size_t dataSize_;
+  boost::shared_ptr<char> data_;
+#ifdef WT_THREADED
+  boost::mutex dataMutex_;
+#endif // WT_THREADED
+
   void internalInit(bool applyChanges = true);
   void internalDone();
   void paintPath();
@@ -154,6 +164,8 @@ WRasterImage::WRasterImage(const std::string& type,
     impl_->pixels_[i*4] = impl_->pixels_[i*4 + 1] = impl_->pixels_[i*4 + 2] = 254;
     impl_->pixels_[i*4 + 3] = 0;
   }
+
+  impl_->dataSize_ = 0;
 
   ExceptionInfo exception;
   GetExceptionInfo(&exception);
@@ -250,6 +262,36 @@ void WRasterImage::done()
 
   delete impl_->fontSupport_;
   impl_->fontSupport_ = 0;
+
+  if (impl_->image_) {
+    ImageInfo info;
+    GetImageInfo(&info);
+
+    ExceptionInfo exception;
+    GetExceptionInfo(&exception);
+
+    std::size_t size;
+    char* data = static_cast<char*>(ImageToBlob(&info, impl_->image_, &size, &exception));
+    
+    if (!data) {
+      DestroyExceptionInfo(&exception);
+      throw WException("WRasterImage::done() image could not be "
+                       "converted to blob - is your image type supported "
+                       "by GraphicsMagick?");
+    }
+
+    {
+#ifdef WT_THREADED
+      boost::mutex::scoped_lock lock(impl_->dataMutex_);
+#endif // WT_THREADED
+      impl_->data_.reset(data, &free);
+      impl_->dataSize_ = size;
+    }
+
+    DestroyExceptionInfo(&exception);
+
+    WResource::setChanged();
+  }
 }
 
 void WRasterImage::Impl::internalDone()
@@ -267,6 +309,28 @@ void WRasterImage::Impl::internalDone()
 
     SetImageClipMask(image_, 0);
     currentClipPathRendered_ = -1;
+  }
+}
+
+void WRasterImage::handleRequest(const Http::Request &request,
+                                 Http::Response &response)
+{
+  std::size_t size = 0;
+  boost::shared_ptr<char> data;
+  {
+#ifdef WT_THREADED
+    boost::mutex::scoped_lock lock(impl_->dataMutex_);
+#endif // WT_THREADED
+
+    data = impl_->data_;
+    size = impl_->dataSize_;
+  }
+
+  if (data) {
+    response.setMimeType("image/" + impl_->type_);
+    response.out().write(data.get(), size);
+  } else {
+    response.setStatus(500);
   }
 }
 
@@ -582,8 +646,14 @@ void WRasterImage::drawArc(const WRectF& rect,
 {
   impl_->internalInit();
 
-  DrawArc(impl_->context_, rect.left(), rect.top(), rect.right(), rect.bottom(), 
-	  startAngle, startAngle + spanAngle);
+  double start = - startAngle;
+  double end = - startAngle - spanAngle;
+
+  if (end < start)
+    std::swap(start, end);
+
+  DrawArc(impl_->context_, rect.left(), rect.top(), rect.right(), rect.bottom(),
+          start, end);
 }
 
 void WRasterImage::drawImage(const WRectF& rect, const std::string& imgUri,
@@ -774,16 +844,20 @@ void WRasterImage::Impl::drawPlainPath(const WPainterPath& path)
 
       const double x1 = rx * std::cos(theta1) + cx;
       const double y1 = ry * std::sin(theta1) + cy;
-      const double x2 = rx * std::cos(theta1 + deltaTheta) + cx;
-      const double y2 = ry * std::sin(theta1 + deltaTheta) + cy;
-      const int fa = (std::fabs(deltaTheta) > M_PI ? 1 : 0);
-      const int fs = (deltaTheta > 0 ? 1 : 0);
+      const double x2 = rx * std::cos(theta1 + deltaTheta / 2.0) + cx;
+      const double y2 = ry * std::sin(theta1 + deltaTheta / 2.0) + cy;
+      const double x3 = rx * std::cos(theta1 + deltaTheta) + cx;
+      const double y3 = ry * std::sin(theta1 + deltaTheta) + cy;
+      const int fa = 0;
+      const unsigned int fs = (deltaTheta > 0 ? 1 : 0);
 
       if (!fequal(current.x(), x1) || !fequal(current.y(), y1))
 	DrawPathLineToAbsolute(context_, x1 - 0.5, y1 - 0.5);
 
       DrawPathEllipticArcAbsolute(context_, rx, ry, 0, fa, fs,
 				  x2 - 0.5, y2 - 0.5);
+      DrawPathEllipticArcAbsolute(context_, rx, ry, 0, fa, fs,
+                                  x3 - 0.5, y3 - 0.5);
 
       i += 2;
       break;
@@ -1012,35 +1086,6 @@ WFontMetrics WRasterImage::fontMetrics()
     throw WException("WRasterImage::fontMetrics() not supported");
   else
     return impl_->fontSupport_->fontMetrics(painter_->font());
-}
-
-void WRasterImage::handleRequest(const Http::Request& request,
-				 Http::Response& response)
-{
-  response.setMimeType("image/" + impl_->type_);
-
-  if (impl_->image_) {
-    ImageInfo info;
-    GetImageInfo(&info);
-
-    ExceptionInfo exception;
-    GetExceptionInfo(&exception);
-
-    std::size_t size;
-    void *data = ImageToBlob(&info, impl_->image_, &size, &exception);
-
-    if(!data) {
-      DestroyExceptionInfo(&exception);
-      throw WException("WRasterImage::handleRequest() image could not be "
-                       "converted to blob - is your image type supported "
-		       "by graphicsmagick?");
-    }
-
-    response.out().write((const char *)data, size);
- 
-    free(data);
-    DestroyExceptionInfo(&exception);
-  }
 }
 
 }

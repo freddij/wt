@@ -1043,6 +1043,18 @@ void WTreeView::setup()
   }
 
   setRowHeight(rowHeight());
+
+  bindObjJS(itemClickedJS_, "click");
+  bindObjJS(rootClickedJS_, "rootClick");
+  bindObjJS(itemDoubleClickedJS_, "dblClick");
+  bindObjJS(rootDoubleClickedJS_, "rootDblClick");
+  bindObjJS(itemMouseDownJS_, "mouseDown");
+  bindObjJS(rootMouseDownJS_, "rootMouseDown");
+  bindObjJS(itemMouseUpJS_, "mouseUp");
+  bindObjJS(rootMouseUpJS_, "rootMouseUp");
+  bindObjJS(touchStartedJS_, "touchStart");
+  bindObjJS(touchMovedJS_, "touchMove");
+  bindObjJS(touchEndedJS_, "touchEnd");
 }
 
 void WTreeView::defineJavaScript()
@@ -1064,7 +1076,7 @@ void WTreeView::defineJavaScript()
 
   setJavaScriptMember(WT_RESIZE_JS,
 		      "function(self,w,h) {"
-		      "$(self).data('obj').wtResize();"
+                      "self.wtObj.wtResize();"
 		      "}");
 }
 
@@ -1197,7 +1209,7 @@ void WTreeView::setColumnWidth(int column, const WLength& width)
   WApplication *app = WApplication::instance();
 
   if (app->environment().ajax() && renderState_ < NeedRerenderHeader)
-    doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
+    doJavaScript(jsRef() + ".wtObj.adjustColumns();");
 
   if (!app->environment().ajax() && column == 0 && !width.isAuto()) {
     double total = 0;
@@ -1469,8 +1481,7 @@ void WTreeView::render(WFlags<RenderFlag> flags)
 
   // update the rowHeight (needed for scrolling fix)
   WStringStream s;
-  s << "jQuery.data(" << jsRef()
-    << ", 'obj').setRowHeight("
+  s << jsRef() << ".wtObj.setRowHeight("
     <<  static_cast<int>(this->rowHeight().toPixels())
     << ");";
 
@@ -1508,7 +1519,7 @@ void WTreeView::rerenderHeader()
   }
 
   if (app->environment().ajax())
-    doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
+    doJavaScript(jsRef() + ".wtObj.adjustColumns();");
 }
 
 void WTreeView::enableAjax()
@@ -1528,7 +1539,6 @@ void WTreeView::rerenderTree()
   WContainerWidget *wrapRoot
     = dynamic_cast<WContainerWidget *>(contents_->widget(0));
 
-  bool firstTime = rootNode_ == 0;
   wrapRoot->clear();
 
   firstRenderedRow_ = calcOptimalFirstRenderedRow();
@@ -1539,26 +1549,22 @@ void WTreeView::rerenderTree()
   if (WApplication::instance()->environment().ajax()) {
 
     if (editTriggers() & SingleClicked || clicked().isConnected()) {
-      connectObjJS(rootNode_->clicked(), "click");
-      if (firstTime)
-	connectObjJS(contentsContainer_->clicked(), "rootClick");
+      rootNode_->clicked().connect(itemClickedJS_);
+      contentsContainer_->clicked().connect(rootClickedJS_);
     }
 
     if (editTriggers() & DoubleClicked || doubleClicked().isConnected()) {
-      connectObjJS(rootNode_->doubleClicked(), "dblClick");
-      if (firstTime)
-	connectObjJS(contentsContainer_->doubleClicked(), "rootDblClick");
+      rootNode_->doubleClicked().connect(itemDoubleClickedJS_);
+      contentsContainer_->doubleClicked().connect(rootDoubleClickedJS_);
     }
 
-    connectObjJS(rootNode_->mouseWentDown(), "mouseDown");
-    if (firstTime)
-      connectObjJS(contentsContainer_->mouseWentDown(), "rootMouseDown");
+    rootNode_->mouseWentDown().connect(itemMouseDownJS_);
+    contentsContainer_->mouseWentDown().connect(rootMouseDownJS_);
 
     if (mouseWentUp().isConnected()) { 
 	  // Do not stop propagation to avoid mouseDrag event being emitted 
-      connectObjJS(rootNode_->mouseWentUp(), "mouseUp");
-      if (firstTime)
-	connectObjJS(contentsContainer_->mouseWentUp(), "rootMouseUp");
+      rootNode_->mouseWentUp().connect(itemMouseUpJS_);
+      contentsContainer_->mouseWentUp().connect(rootMouseUpJS_);
     }
 
 #ifdef WT_CNOR
@@ -1567,9 +1573,9 @@ void WTreeView::rerenderTree()
     EventSignalBase& a = rootNode_->touchStarted();
 #endif
    
-    connectObjJS(rootNode_->touchStarted(), "touchStart");
-    connectObjJS(rootNode_->touchMoved(), "touchMove");
-    connectObjJS(rootNode_->touchEnded(), "touchEnd");
+    rootNode_->touchStarted().connect(touchStartedJS_);
+    rootNode_->touchMoved().connect(touchMovedJS_);
+    rootNode_->touchEnded().connect(touchEndedJS_);
   }
 
   setRootNodeStyle();
@@ -1896,7 +1902,7 @@ void WTreeView::modelColumnsInserted(const WModelIndex& parent,
 	scheduleRerender(NeedRerenderHeader);
       else {
 	if (app->environment().ajax())
-	  doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
+	  doJavaScript(jsRef() + ".wtObj.adjustColumns();");
 
 	WContainerWidget *row = headerRow();
 
@@ -1931,7 +1937,7 @@ void WTreeView::modelColumnsAboutToBeRemoved(const WModelIndex& parent,
     if (renderState_ < NeedRerenderHeader) {
       WApplication *app = wApp;
       if (app->environment().ajax())
-	doJavaScript("$('#" + id() + "').data('obj').adjustColumns();");
+	doJavaScript(jsRef() + ".wtObj.adjustColumns();");
     }
 
     for (int i=start; i<start+count; i++)
@@ -2921,8 +2927,8 @@ void WTreeView::scrollTo(const WModelIndex& index, ScrollHint hint)
 
     WStringStream s;
 
-    s << "setTimeout(function() { jQuery.data(" << jsRef()
-      << ", 'obj').scrollTo(-1, "
+    s << "setTimeout(function() { " << jsRef()
+      << ".wtObj.scrollTo(-1, "
       << row << "," << static_cast<int>(rowHeight().toPixels())
       << "," << (int)hint << ");});";
 
@@ -2937,6 +2943,19 @@ EventSignal<WScrollEvent>& WTreeView::scrolled(){
 
   throw WException("Scrolled signal existes only with ajax.");
 }
+
+void WTreeView::setId(const std::string &id)
+{
+  WAbstractItemView::setId(id);
+  setup();
+}
+
+void WTreeView::setObjectName(const std::string &objectName)
+{
+  WAbstractItemView::setObjectName(objectName);
+  setup();
+}
+
 }
 
 #endif // DOXYGEN_ONLY
