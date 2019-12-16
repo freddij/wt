@@ -412,6 +412,7 @@ protected:
 #ifndef EVENT_TONY
   typedef std::list<JSignal<> *> KEventSignalList;
   KEventSignalList kEventSignals_;
+  std::list<JSlot*> kEventSlots_;
 #endif
 
   JSlot *dragSlot_;

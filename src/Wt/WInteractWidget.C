@@ -110,6 +110,12 @@ WInteractWidget::~WInteractWidget()
     delete s;
   }
 
+  while(!kEventSlots_.empty())
+  {
+    JSlot *s = kEventSlots_.front();
+    kEventSlots_.pop_front();
+    delete s;
+  }
 }
 
 void WInteractWidget::setPopup(bool popup)
@@ -182,6 +188,7 @@ JSignal<> &WInteractWidget::keyDownUpSignal(const std::string &key, const WFlags
     else
       modString.append("&& !e.metaKey");
 
+    // hapus jslot di destructor
     JSlot *jslot = new JSlot(
           WString(
             WT_JS(
@@ -197,6 +204,7 @@ JSignal<> &WInteractWidget::keyDownUpSignal(const std::string &key, const WFlags
           .arg(ret->createCall())
           .toUTF8()
           ,this);
+    kEventSlots_.push_back(jslot);
 
     EventSignal<WKeyEvent> &keysignal = (trigger == KEYDOWN) ? keyWentDown() : keyWentUp();
     keysignal.connect(*jslot);
