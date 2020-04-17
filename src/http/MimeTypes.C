@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Emweb bvba, Kessel-Lo, Belgium.
+ * Copyright (C) 2008 Emweb bv, Herent, Belgium.
  *
  * All rights reserved.
  */
@@ -34,6 +34,7 @@ struct mapping
   { "jpg", "image/jpeg" },
   { "png", "image/png" },
   { "js", "text/javascript" },
+  { "wasm", "application/wasm" },
   { "oga", "audio/ogg" },
   { "ogg", "audio/ogg" },
   { "ogv", "video/ogg" },

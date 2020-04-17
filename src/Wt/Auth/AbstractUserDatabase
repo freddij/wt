@@ -1,6 +1,6 @@
 // This may look like C code, but it's really -*- C++ -*-
 /*
- * Copyright (C) 2011 Emweb bvba, Kessel-Lo, Belgium.
+ * Copyright (C) 2011 Emweb bv, Herent, Belgium.
  *
  * See the LICENSE file for terms of use.
  */
@@ -75,6 +75,9 @@ public:
    * \sa startTransaction()
    */
   class WT_API Transaction
+#ifdef WT_TARGET_JAVA
+    : public AutoCloseable
+#endif // WT_TARGET_JAVA
   {
   public:
     /*! \brief Destructor.

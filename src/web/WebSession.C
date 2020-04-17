@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Emweb bvba, Kessel-Lo, Belgium.
+ * Copyright (C) 2008 Emweb bv, Herent, Belgium.
  *
  * See the LICENSE file for terms of use.
  */
@@ -2332,8 +2332,8 @@ void WebSession::notify(const WEvent& event)
 	  return;
 	}
 
-      std::string ca = WEnvironment::getClientAddress
-	(*handler.request(), controller_->configuration());
+      std::string ca = handler.request()->clientAddress(
+            controller_->configuration().behindReverseProxy());
 
       if (ca != env_->clientAddress()) {
 	bool isInvalid = sessionIdCookie_.empty();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Emweb bvba, Kessel-Lo, Belgium.
+ * Copyright (C) 2008 Emweb bv, Herent, Belgium.
  *
  * See the LICENSE file for terms of use.
  */
@@ -730,7 +730,7 @@ public:
     painter_.strokePath(transform.map(bar).crisp(), pen);
 
     WString toolTip = series_.model()->toolTip(yRow, yColumn);
-    if (!toolTip.empty()) {
+    if (!toolTip.empty() && nonZeroWidth) {
       WTransform t = painter_.worldTransform();
 
       WPointF tl = t.map(segmentPoint(bar, 0));
@@ -1452,6 +1452,7 @@ void WCartesianChart::init()
     clicked().connect("function(o, e){var o=" + this->cObjJsRef() + ";if(o){o.clicked(o, e);}}");
     jsSeriesSelected_.connect(this, &WCartesianChart::jsSeriesSelected);
     loadTooltip_.connect(this, &WCartesianChart::loadTooltip);
+    voidEventSignal("dragstart", true)->preventDefaultAction(true);
   }
 
   wheelActions_[NoModifier] = PanMatching;

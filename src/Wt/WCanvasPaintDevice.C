@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Emweb bvba, Kessel-Lo, Belgium.
+ * Copyright (C) 2008 Emweb bv, Herent, Belgium.
  *
  * See the LICENSE file for terms of use.
  */
@@ -331,16 +331,12 @@ void WCanvasPaintDevice::drawImage(const WRectF& rect,
 
   int imageIndex = createImage(imgUri);
 
-  char buf[30];
-  js_ << "ctx.drawImage(images[" << imageIndex
-      << "]," << Utils::round_js_str(sourceRect.x(), 3, buf);
-  js_ << ',' << Utils::round_js_str(sourceRect.y(), 3, buf);
-  js_ << ',' << Utils::round_js_str(sourceRect.width(), 3, buf);
-  js_ << ',' << Utils::round_js_str(sourceRect.height(), 3, buf);
-  js_ << ',' << Utils::round_js_str(rect.x(), 3, buf);
-  js_ << ',' << Utils::round_js_str(rect.y(), 3, buf);
-  js_ << ',' << Utils::round_js_str(rect.width(), 3, buf);
-  js_ << ',' << Utils::round_js_str(rect.height(), 3, buf) << ");";
+  js_ << WT_CLASS ".gfxUtils.drawImage("
+         "ctx,"
+         "images[" << imageIndex << "],"
+      << Wt::WWebWidget::jsStringLiteral(imgUri) << ','
+      << sourceRect.jsRef() << ','
+      << rect.jsRef() << ");";
 }
 
 void WCanvasPaintDevice::drawPlainPath(std::stringstream& out,
