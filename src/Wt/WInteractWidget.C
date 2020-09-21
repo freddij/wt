@@ -101,22 +101,22 @@ WInteractWidget::WInteractWidget(WContainerWidget *parent)
 
 WInteractWidget::~WInteractWidget()
 {
-  delete dragSlot_;
-  delete dragTouchSlot_;
-  delete dragTouchEndSlot_;
+    delete dragSlot_;
+    delete dragTouchSlot_;
+    delete dragTouchEndSlot_;
 
-  while (!kEventSignals_.empty()) {
-    JSignal<> *s = kEventSignals_.front();
-    kEventSignals_.pop_front();
-    delete s;
-  }
+    while(!kEventSlots_.empty())
+    {
+        JSlot *s = kEventSlots_.front();
+        kEventSlots_.pop_front();
+        delete s;
+    }
 
-  while(!kEventSlots_.empty())
-  {
-    JSlot *s = kEventSlots_.front();
-    kEventSlots_.pop_front();
-    delete s;
-  }
+    while (!kEventSignals_.empty()) {
+        JSignal<> *s = kEventSignals_.front();
+        kEventSignals_.pop_front();
+        delete s;
+    }
 }
 
 void WInteractWidget::setPopup(bool popup)
@@ -280,12 +280,8 @@ void WInteractWidget::addKEventSignal(JSignal<> &s)
 
 JSignal<> *WInteractWidget::getKEventSignal(const char *name)
 {
-  for (KEventSignalList::iterator i = kEventSignals_.begin();
-       i != kEventSignals_.end(); ++i) {
-    JSignal<>& s = **i;
-    if (s.name() == name)
-      return &s;
-  }
+  for (auto s : kEventSignals_)
+    if (s->name() == name) return s;
 
   return 0;
 }
